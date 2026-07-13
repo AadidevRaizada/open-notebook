@@ -1,19 +1,153 @@
+import base64
+import io
+import mimetypes
 import operator
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from content_core import extract_content
 from content_core.common import ProcessSourceState
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 from loguru import logger
+from PIL import Image
 from typing_extensions import Annotated, TypedDict
 
 from open_notebook.ai.models import Model, ModelManager
+from open_notebook.ai.provision import provision_langchain_model
 from open_notebook.domain.content_settings import ContentSettings
 from open_notebook.domain.notebook import Asset, Source
 from open_notebook.domain.transformation import Transformation
+from open_notebook.exceptions import ConfigurationError
 from open_notebook.graphs.transformation import graph as transform_graph
+from open_notebook.utils.text_utils import extract_text_content
+
+# Standalone image formats that content-core cannot process on its own
+# (it only OCRs images embedded inside documents, e.g. scanned PDFs).
+# These are routed through a vision-capable chat model instead. This list is
+# intentionally broader than what any single vision provider accepts
+# natively (e.g. Gemini rejects BMP/TIFF) — unsupported-but-common formats
+# are normalized to PNG before being sent to the model.
+IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+    "image/tiff",
+    "image/heic",
+    "image/heif",
+    "image/x-ms-bmp",
+}
+
+# MIME types most vision-capable chat models (OpenAI, Anthropic, Gemini)
+# accept directly without re-encoding.
+VISION_NATIVE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+IMAGE_VISION_PROMPT = (
+    "Transcribe and describe this image for use as a searchable knowledge "
+    "source. First, transcribe verbatim any text visible in the image "
+    "(receipts, forms, labels, signage, handwriting, etc.), preserving "
+    "structure like line breaks and tables where possible. Then, add a "
+    "short factual description of any non-text visual content (people, "
+    "objects, charts, scenes). Do not add commentary, opinions, or "
+    "formatting beyond what's needed for readability. If the image "
+    "contains no legible text, just describe its visual content factually."
+)
+
+
+def _detect_image_mime_type(file_path: str) -> Optional[str]:
+    """Return the MIME type if file_path points to a standalone image, else None."""
+    if not file_path:
+        return None
+    mime_type, _ = mimetypes.guess_type(file_path)
+    if mime_type in IMAGE_MIME_TYPES:
+        return mime_type
+    return None
+
+
+def _prepare_image_for_vision(image_bytes: bytes, mime_type: str) -> tuple[bytes, str]:
+    """
+    Return (bytes, mime_type) ready to send to a vision model.
+
+    Formats not universally accepted by vision providers (BMP, TIFF, HEIC,
+    etc.) are transcoded to PNG. Natively-supported formats pass through
+    unchanged to avoid unnecessary re-encoding.
+    """
+    if mime_type in VISION_NATIVE_MIME_TYPES:
+        return image_bytes, mime_type
+
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        return buffer.getvalue(), "image/png"
+
+
+async def extract_image_content(file_path: str, mime_type: str) -> str:
+    """
+    Extract text/description content from a standalone image using a
+    vision-capable model, since content-core has no image processor.
+
+    Uses the dedicated "vision" default model if configured (Settings →
+    Models → Vision Model), so OCR/image extraction isn't locked to whatever
+    model is used for chat. Falls back to the default chat model if no
+    vision model is explicitly set. Either way, the chosen model must
+    support multimodal (image) input.
+    """
+    path = Path(file_path)
+    if not path.exists():
+        raise ValueError(f"Image file not found: {file_path}")
+
+    raw_bytes = path.read_bytes()
+    try:
+        image_bytes, send_mime_type = _prepare_image_for_vision(raw_bytes, mime_type)
+    except Exception as e:
+        raise ValueError(
+            f"Could not read or convert image file ({mime_type}): {e}"
+        ) from e
+
+    b64_image = base64.b64encode(image_bytes).decode("utf-8")
+
+    try:
+        model = await provision_langchain_model(
+            IMAGE_VISION_PROMPT,
+            None,
+            "vision",
+        )
+    except ConfigurationError as e:
+        raise ConfigurationError(
+            "Image sources require a vision-capable model (e.g. GPT-4o, "
+            "Gemini, Claude 3.5+). Configure one in Settings → Models → "
+            f"Vision Model (or Chat Model as a fallback). ({e})"
+        ) from e
+
+    message = HumanMessage(
+        content=[
+            {"type": "text", "text": IMAGE_VISION_PROMPT},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{send_mime_type};base64,{b64_image}"},
+            },
+        ]
+    )
+
+    try:
+        response = await model.ainvoke([message])
+    except Exception as e:
+        raise ValueError(
+            "Failed to extract content from image. The configured vision "
+            f"model may not support image input. Error: {e}"
+        ) from e
+
+    content = extract_text_content(response.content)
+    if not content or not content.strip():
+        raise ValueError("Vision model returned no content for this image.")
+
+    return content
 
 
 class SourceState(TypedDict):
@@ -74,6 +208,29 @@ async def content_process(state: SourceState) -> dict:
     except Exception as e:
         logger.warning(f"Failed to retrieve speech-to-text model configuration: {e}")
         # Continue without custom audio model (content-core will use its default)
+
+    # content-core has no processor for standalone image files (it only OCRs
+    # images embedded inside documents, e.g. scanned PDFs). Detect that case
+    # and route through a vision-capable chat model instead, then feed the
+    # resulting text back into the same downstream pipeline (chunking,
+    # embedding, insights) as any other extracted content.
+    image_mime_type = _detect_image_mime_type(content_state.get("file_path") or "")
+    if image_mime_type:
+        logger.info(
+            f"Detected standalone image ({image_mime_type}); "
+            "extracting content via vision model instead of content-core"
+        )
+        image_text = await extract_image_content(
+            content_state["file_path"], image_mime_type
+        )
+        file_path = content_state.get("file_path") or ""
+        processed_state = ProcessSourceState(
+            file_path=file_path,
+            url=content_state.get("url") or "",
+            title=Path(file_path).name if file_path else "Image",
+            content=image_text,
+        )
+        return {"content_state": processed_state}
 
     processed_state = await extract_content(content_state)
 

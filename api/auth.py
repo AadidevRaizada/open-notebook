@@ -1,7 +1,10 @@
-from typing import Optional
+import os
+from typing import Any, Optional
 
+import jwt
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWKClient
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
@@ -10,11 +13,83 @@ from starlette.types import ASGIApp
 from open_notebook.utils.encryption import get_secret_from_env
 
 
+def get_clerk_jwks_url() -> Optional[str]:
+    """
+    Resolve the Clerk JWKS URL from CLERK_JWKS_URL or CLERK_ISSUER.
+    When either is set, the API runs in Clerk mode: requests must carry a
+    Clerk-signed session JWT instead of the shared password.
+    """
+    jwks_url = os.environ.get("CLERK_JWKS_URL")
+    if jwks_url:
+        return jwks_url
+    issuer = os.environ.get("CLERK_ISSUER")
+    if issuer:
+        return f"{issuer.rstrip('/')}/.well-known/jwks.json"
+    return None
+
+
+def get_auth_mode() -> str:
+    """Return the active auth mode: "clerk", "password", or "none"."""
+    if get_clerk_jwks_url():
+        return "clerk"
+    if get_secret_from_env("OPEN_NOTEBOOK_PASSWORD"):
+        return "password"
+    return "none"
+
+
+# PyJWKClient caches fetched signing keys; module-level so all requests share it.
+_jwks_client: Optional[PyJWKClient] = None
+
+
+def _get_jwks_client(jwks_url: str) -> PyJWKClient:
+    global _jwks_client
+    if _jwks_client is None or _jwks_client.uri != jwks_url:
+        _jwks_client = PyJWKClient(jwks_url, cache_keys=True, lifespan=3600)
+    return _jwks_client
+
+
+def verify_clerk_token(token: str) -> dict[str, Any]:
+    """
+    Verify a Clerk session JWT and return its claims.
+    Raises jwt exceptions on invalid/expired tokens.
+    """
+    jwks_url = get_clerk_jwks_url()
+    if not jwks_url:
+        raise RuntimeError("Clerk auth is not configured")
+
+    signing_key = _get_jwks_client(jwks_url).get_signing_key_from_jwt(token)
+
+    issuer = os.environ.get("CLERK_ISSUER")
+    claims: dict[str, Any] = jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=["RS256"],
+        issuer=issuer if issuer else None,
+        options={"verify_aud": False, "verify_iss": bool(issuer)},
+        leeway=10,
+    )
+
+    # Optional azp check: reject tokens minted for other origins.
+    authorized_parties = os.environ.get("CLERK_AUTHORIZED_PARTIES")
+    if authorized_parties:
+        allowed = {p.strip() for p in authorized_parties.split(",") if p.strip()}
+        azp = claims.get("azp")
+        if azp and azp not in allowed:
+            raise jwt.InvalidTokenError(f"azp '{azp}' is not an authorized party")
+
+    return claims
+
+
 class PasswordAuthMiddleware(BaseHTTPMiddleware):
     """
-    Middleware to check password authentication for all API requests.
-    Always active with default password if OPEN_NOTEBOOK_PASSWORD is not set.
-    Supports Docker secrets via OPEN_NOTEBOOK_PASSWORD_FILE.
+    Authentication middleware for all API requests.
+
+    Two modes, selected by environment:
+    - Clerk mode (CLERK_JWKS_URL or CLERK_ISSUER set): requests must carry a
+      Clerk-signed session JWT; verified claims are stored on request.state.user.
+    - Password mode (OPEN_NOTEBOOK_PASSWORD set): legacy shared-password check.
+      Supports Docker secrets via OPEN_NOTEBOOK_PASSWORD_FILE.
+    If neither is configured, authentication is skipped entirely.
     """
 
     def __init__(
@@ -22,6 +97,13 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
     ) -> None:
         super().__init__(app)
         self.password = get_secret_from_env("OPEN_NOTEBOOK_PASSWORD")
+        self.clerk_enabled = bool(get_clerk_jwks_url())
+        if self.clerk_enabled:
+            logger.info("Authentication mode: Clerk (JWT verification)")
+        elif self.password:
+            logger.info("Authentication mode: shared password")
+        else:
+            logger.warning("Authentication disabled (no Clerk or password config)")
         self.excluded_paths: list[str] = excluded_paths or [
             "/",
             "/health",
@@ -33,8 +115,8 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        # Skip authentication if no password is set
-        if not self.password:
+        # Skip authentication if neither Clerk nor a password is configured
+        if not self.clerk_enabled and not self.password:
             return await call_next(request)
 
         # Skip authentication for excluded paths
@@ -55,7 +137,7 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        # Expected format: "Bearer {password}"
+        # Expected format: "Bearer {token-or-password}"
         try:
             scheme, credentials = auth_header.split(" ", 1)
             if scheme.lower() != "bearer":
@@ -66,6 +148,23 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Invalid authorization header format"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        if self.clerk_enabled:
+            try:
+                claims = verify_clerk_token(credentials)
+            except jwt.PyJWTError as e:
+                logger.debug(f"Clerk token rejected: {e}")
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid or expired session token"},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            request.state.user = {
+                "id": claims.get("sub"),
+                "email": claims.get("email"),
+                "role": claims.get("role"),
+            }
+            return await call_next(request)
 
         # Check password
         if credentials != self.password:
@@ -78,6 +177,27 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
         # Password is correct, proceed with the request
         response = await call_next(request)
         return response
+
+
+def require_admin(request: Request) -> bool:
+    """
+    FastAPI dependency restricting an endpoint to admin users.
+
+    In Clerk mode, the session token must carry role == "admin"
+    (set via the user's publicMetadata in the Clerk dashboard).
+    In password/none mode there is a single operator, so everything is allowed
+    and existing single-user behavior is preserved.
+    """
+    if get_auth_mode() != "clerk":
+        return True
+
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required",
+        )
+    return True
 
 
 # Optional: HTTPBearer security scheme for OpenAPI documentation

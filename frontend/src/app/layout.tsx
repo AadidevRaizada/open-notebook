@@ -7,13 +7,14 @@ import { QueryProvider } from "@/components/providers/QueryProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 import { ConnectionGuard } from "@/components/common/ConnectionGuard";
+import { AuthProvider } from "@/components/providers/AuthProvider";
 import { themeScript } from "@/lib/theme-script";
 import { I18nProvider } from "@/components/providers/I18nProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Open Notebook",
+  title: "IRS Knowledge base",
   description: "Privacy-focused research and knowledge management",
 };
 
@@ -28,18 +29,20 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={inter.className}>
-        <ErrorBoundary>
-          <ThemeProvider>
-            <QueryProvider>
-              <I18nProvider>
-                <ConnectionGuard>
-                  {children}
-                  <Toaster />
-                </ConnectionGuard>
-              </I18nProvider>
-            </QueryProvider>
-          </ThemeProvider>
-        </ErrorBoundary>
+        <AuthProvider>
+          <ErrorBoundary>
+            <ThemeProvider>
+              <QueryProvider>
+                <I18nProvider>
+                  <ConnectionGuard>
+                    {children}
+                    <Toaster />
+                  </ConnectionGuard>
+                </I18nProvider>
+              </QueryProvider>
+            </ThemeProvider>
+          </ErrorBoundary>
+        </AuthProvider>
       </body>
     </html>
   );

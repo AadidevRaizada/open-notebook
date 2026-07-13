@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { AdminGuard } from '@/components/auth/AdminGuard'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -13,6 +14,14 @@ import { Wand2, Play, RefreshCw } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 export default function TransformationsPage() {
+  return (
+    <AdminGuard>
+      <TransformationsPageContent />
+    </AdminGuard>
+  )
+}
+
+function TransformationsPageContent() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState('transformations')
   const [selectedTransformation, setSelectedTransformation] = useState<Transformation | undefined>()

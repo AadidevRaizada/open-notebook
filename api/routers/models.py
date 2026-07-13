@@ -3,7 +3,9 @@ import traceback
 from typing import Dict, List, Optional
 
 from esperanto import AIFactory
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from api.auth import require_admin
 from loguru import logger
 from pydantic import BaseModel
 
@@ -194,7 +196,7 @@ async def get_models(
         raise HTTPException(status_code=500, detail=f"Error fetching models: {str(e)}")
 
 
-@router.post("/models", response_model=ModelResponse)
+@router.post("/models", dependencies=[Depends(require_admin)], response_model=ModelResponse)
 async def create_model(model_data: ModelCreate):
     """Create a new model configuration."""
     try:
@@ -249,7 +251,7 @@ async def create_model(model_data: ModelCreate):
         raise HTTPException(status_code=500, detail=f"Error creating model: {str(e)}")
 
 
-@router.delete("/models/{model_id}")
+@router.delete("/models/{model_id}", dependencies=[Depends(require_admin)])
 async def delete_model(model_id: str):
     """Delete a model configuration."""
     try:
@@ -267,7 +269,7 @@ async def delete_model(model_id: str):
         raise HTTPException(status_code=500, detail=f"Error deleting model: {str(e)}")
 
 
-@router.post("/models/{model_id}/test", response_model=ModelTestResponse)
+@router.post("/models/{model_id}/test", dependencies=[Depends(require_admin)], response_model=ModelTestResponse)
 async def test_model(model_id: str):
     """Test if a specific model is correctly configured and functional."""
     try:
@@ -302,6 +304,7 @@ async def get_default_models():
             large_context_model=defaults.large_context_model,  # type: ignore[attr-defined]
             default_text_to_speech_model=defaults.default_text_to_speech_model,  # type: ignore[attr-defined]
             default_speech_to_text_model=defaults.default_speech_to_text_model,  # type: ignore[attr-defined]
+            default_vision_model=defaults.default_vision_model,  # type: ignore[attr-defined]
             default_embedding_model=defaults.default_embedding_model,  # type: ignore[attr-defined]
             default_tools_model=defaults.default_tools_model,  # type: ignore[attr-defined]
         )
@@ -312,7 +315,7 @@ async def get_default_models():
         )
 
 
-@router.put("/models/defaults", response_model=DefaultModelsResponse)
+@router.put("/models/defaults", dependencies=[Depends(require_admin)], response_model=DefaultModelsResponse)
 async def update_default_models(defaults_data: DefaultModelsResponse):
     """Update default model assignments."""
     try:
@@ -335,6 +338,8 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
             defaults.default_speech_to_text_model = (
                 defaults_data.default_speech_to_text_model
             )  # type: ignore[attr-defined]
+        if defaults_data.default_vision_model is not None:
+            defaults.default_vision_model = defaults_data.default_vision_model  # type: ignore[attr-defined]
         if defaults_data.default_embedding_model is not None:
             defaults.default_embedding_model = defaults_data.default_embedding_model  # type: ignore[attr-defined]
         if defaults_data.default_tools_model is not None:
@@ -350,6 +355,7 @@ async def update_default_models(defaults_data: DefaultModelsResponse):
             large_context_model=defaults.large_context_model,  # type: ignore[attr-defined]
             default_text_to_speech_model=defaults.default_text_to_speech_model,  # type: ignore[attr-defined]
             default_speech_to_text_model=defaults.default_speech_to_text_model,  # type: ignore[attr-defined]
+            default_vision_model=defaults.default_vision_model,  # type: ignore[attr-defined]
             default_embedding_model=defaults.default_embedding_model,  # type: ignore[attr-defined]
             default_tools_model=defaults.default_tools_model,  # type: ignore[attr-defined]
         )
@@ -519,7 +525,7 @@ async def discover_models(provider: str):
         )
 
 
-@router.post("/models/sync/{provider}", response_model=ProviderSyncResponse)
+@router.post("/models/sync/{provider}", dependencies=[Depends(require_admin)], response_model=ProviderSyncResponse)
 async def sync_models(provider: str):
     """
     Sync models for a specific provider.
@@ -546,7 +552,7 @@ async def sync_models(provider: str):
         raise HTTPException(status_code=500, detail="Error syncing models. Check server logs for details.")
 
 
-@router.post("/models/sync", response_model=AllProvidersSyncResponse)
+@router.post("/models/sync", dependencies=[Depends(require_admin)], response_model=AllProvidersSyncResponse)
 async def sync_all_models():
     """
     Sync models for all configured providers.
@@ -685,7 +691,7 @@ def _get_preferred_model(
     return models[0] if models else None
 
 
-@router.post("/models/auto-assign", response_model=AutoAssignResult)
+@router.post("/models/auto-assign", dependencies=[Depends(require_admin)], response_model=AutoAssignResult)
 async def auto_assign_defaults():
     """
     Auto-assign default models based on available models.

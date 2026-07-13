@@ -20,9 +20,11 @@ NEVER returns actual API key values - only metadata.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from loguru import logger
 from pydantic import SecretStr
+
+from api.auth import require_admin
 
 from api.credentials_service import (
     credential_to_response,
@@ -58,7 +60,13 @@ from open_notebook.database.repository import ensure_record_id, repo_delete, rep
 from open_notebook.domain.credential import Credential
 from open_notebook.exceptions import NotFoundError
 
-router = APIRouter(prefix="/credentials", tags=["credentials"])
+# All credential endpoints are admin-only: they configure the shared AI
+# providers for the whole deployment (in password mode require_admin is a no-op).
+router = APIRouter(
+    prefix="/credentials",
+    tags=["credentials"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 def _handle_value_error(e: ValueError, status_code: int = 400) -> HTTPException:

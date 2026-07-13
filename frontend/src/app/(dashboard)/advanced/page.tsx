@@ -1,11 +1,20 @@
 'use client'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { AdminGuard } from '@/components/auth/AdminGuard'
 import { RebuildEmbeddings } from './components/RebuildEmbeddings'
 import { SystemInfo } from './components/SystemInfo'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
 export default function AdvancedPage() {
+  return (
+    <AdminGuard>
+      <AdvancedPageContent />
+    </AdminGuard>
+  )
+}
+
+function AdvancedPageContent() {
   const { t } = useTranslation()
   return (
     <AppShell>

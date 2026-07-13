@@ -74,7 +74,7 @@ Sources are the raw materials of your research. This guide covers how to add dif
 ### What Doesn't Work
 - Paywalled content (WSJ, FT, etc.) — Can't extract
 - Password-protected PDFs — Can't open
-- Pure image files (.jpg, .png) — Except scanned PDFs which have OCR
+- ~~Pure image files (.jpg, .png)~~ — Now supported via vision model (requires a default chat model that supports image input, e.g. GPT-4o, Gemini, Claude 3.5+)
 - Very large files (>100MB) — Timeout
 
 ---

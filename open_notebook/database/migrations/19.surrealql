@@ -1,0 +1,10 @@
+-- Migration 19: usage_event table for per-user activity tracking (admin dashboard).
+
+DEFINE TABLE IF NOT EXISTS usage_event SCHEMALESS;
+DEFINE FIELD IF NOT EXISTS user_id ON TABLE usage_event TYPE string;
+DEFINE FIELD IF NOT EXISTS email ON TABLE usage_event TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS action ON TABLE usage_event TYPE string;
+
+-- Indexes backing the admin usage aggregation (GROUP BY user_id, ORDER BY created DESC)
+DEFINE INDEX IF NOT EXISTS idx_usage_event_user ON TABLE usage_event FIELDS user_id CONCURRENTLY;
+DEFINE INDEX IF NOT EXISTS idx_usage_event_created ON TABLE usage_event FIELDS created CONCURRENTLY;

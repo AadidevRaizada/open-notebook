@@ -1,0 +1,5 @@
+-- Migration 19 down: remove usage_event table.
+
+REMOVE INDEX IF EXISTS idx_usage_event_user ON TABLE usage_event;
+REMOVE INDEX IF EXISTS idx_usage_event_created ON TABLE usage_event;
+REMOVE TABLE IF EXISTS usage_event;

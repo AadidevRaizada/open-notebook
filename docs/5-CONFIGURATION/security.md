@@ -314,6 +314,80 @@ CORS_ORIGINS=https://notebook.example.com,https://admin.example.com
 
 ---
 
+## Clerk Authentication & Admin Panel
+
+For multi-user deployments, Open Notebook supports [Clerk](https://clerk.com) as an authentication provider. Clerk mode replaces the single shared password with per-user accounts, sign-in/sign-up flows, and role-based access — and unlocks the built-in **Admin Panel** for user management and usage tracking.
+
+### Auth Modes
+
+The API selects its auth mode automatically from the environment:
+
+| Mode | Trigger | Behavior |
+|------|---------|----------|
+| **Clerk** | `CLERK_JWKS_URL` or `CLERK_ISSUER` set | Requests must carry a Clerk-signed session JWT; per-user identity and roles |
+| **Password** | `OPEN_NOTEBOOK_PASSWORD` set (and no Clerk config) | Legacy shared-password check |
+| **None** | Neither configured | Authentication disabled |
+
+Clerk mode takes precedence when both are configured.
+
+### Configuration
+
+```bash
+# .env or docker.env
+
+# Required for Clerk mode (either one enables it)
+CLERK_ISSUER=https://your-app.clerk.accounts.dev
+# ...or provide the JWKS URL directly:
+# CLERK_JWKS_URL=https://your-app.clerk.accounts.dev/.well-known/jwks.json
+
+# Required for user management from the Admin Panel (Clerk Backend API)
+CLERK_SECRET_KEY=sk_live_...
+
+# Optional: restrict which origins may mint accepted tokens (comma-separated azp check)
+CLERK_AUTHORIZED_PARTIES=https://notebook.example.com
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `CLERK_ISSUER` | Your Clerk instance issuer URL; enables Clerk mode and verifies the token `iss`/JWKS |
+| `CLERK_JWKS_URL` | Alternative to `CLERK_ISSUER` — the JWKS endpoint used to verify token signatures |
+| `CLERK_SECRET_KEY` | Clerk Backend API key. Required for Admin Panel user management (invite/role/ban/delete). Never leaves the server |
+| `CLERK_AUTHORIZED_PARTIES` | Optional. Rejects tokens whose `azp` is not in this allow-list |
+
+> **Keep `CLERK_SECRET_KEY` server-side only.** The frontend talks only to the Open Notebook API; the secret key never reaches the browser.
+
+### Admin Role
+
+Access to the Admin Panel requires the `admin` role. Set it on a user's **public metadata** in the Clerk dashboard:
+
+```json
+{ "role": "admin" }
+```
+
+The role is embedded in the session token and checked by the API (`require_admin`). In **password** and **none** modes there is a single operator, so admin-gated routes are allowed for backward compatibility.
+
+### Admin Panel
+
+Admins get an **Admin** entry in the sidebar and command palette, linking to `/admin`:
+
+- **Users** — list accounts, invite new users by email, promote/demote admins, ban/unban, and delete users. These actions call the Clerk Backend API and require `CLERK_SECRET_KEY`; without it the user-management endpoints return `400` while the rest of the panel still works.
+- **Usage** — a per-user activity dashboard aggregating tracked actions (sources, notes, chat, search, ask, podcasts, transformations, report exports) plus a recent-events feed. Usage tracking is recorded automatically by middleware; in password/none mode events are attributed to `local`.
+
+> You cannot modify or delete your own account from the Admin Panel — this guards against accidental self-lockout.
+
+### API Requests in Clerk Mode
+
+Instead of the shared password, send the user's Clerk session token:
+
+```bash
+curl -H "Authorization: Bearer <clerk_session_jwt>" \
+  http://localhost:5055/api/notebooks
+```
+
+Invalid or expired tokens return `401`; non-admin users hitting admin routes return `403`.
+
+---
+
 ## Security Limitations
 
 Open Notebook's password protection provides **basic access control**, not enterprise-grade security:

@@ -1,10 +1,40 @@
 'use client'
 
+import { useAuth as useClerkAuth, useClerk } from '@clerk/nextjs'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { isClerkEnabled } from '@/lib/auth/clerk'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 
-export function useAuth() {
+interface UseAuthResult {
+  isAuthenticated: boolean
+  isLoading: boolean
+  error: string | null
+  login: (password: string) => Promise<boolean>
+  logout: () => void
+}
+
+/**
+ * Clerk-mode adapter: session state comes from Clerk; login happens on the
+ * /sign-in page (Clerk components), so login() here is a no-op.
+ */
+function useClerkAuthAdapter(): UseAuthResult {
+  const { isSignedIn, isLoaded } = useClerkAuth()
+  const { signOut } = useClerk()
+
+  return {
+    isAuthenticated: !!isSignedIn,
+    isLoading: !isLoaded,
+    error: null,
+    login: async () => false,
+    logout: () => {
+      void signOut({ redirectUrl: '/sign-in' })
+    },
+  }
+}
+
+/** Legacy shared-password flow backed by the Zustand auth store. */
+function usePasswordAuth(): UseAuthResult {
   const router = useRouter()
   const {
     isAuthenticated,
@@ -47,7 +77,7 @@ export function useAuth() {
         sessionStorage.removeItem('redirectAfterLogin')
         router.push(redirectPath)
       } else {
-        router.push('/notebooks')
+        router.push('/search')
       }
     }
     return success
@@ -66,3 +96,9 @@ export function useAuth() {
     logout: handleLogout
   }
 }
+
+// isClerkEnabled is a build-time constant, so the chosen implementation never
+// changes at runtime and the rules of hooks hold within each component.
+export const useAuth: () => UseAuthResult = isClerkEnabled
+  ? useClerkAuthAdapter
+  : usePasswordAuth

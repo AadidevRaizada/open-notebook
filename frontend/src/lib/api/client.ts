@@ -1,5 +1,6 @@
 import axios, { AxiosResponse } from 'axios'
 import { getApiUrl } from '@/lib/config'
+import { getClerkToken, isClerkEnabled } from '@/lib/auth/clerk'
 
 // API client with runtime-configurable base URL
 // The base URL is fetched from the API config endpoint on first request
@@ -35,15 +36,23 @@ apiClient.interceptors.request.use(async (config) => {
   }
 
   if (typeof window !== 'undefined') {
-    const authStorage = localStorage.getItem('auth-storage')
-    if (authStorage) {
-      try {
-        const { state } = JSON.parse(authStorage)
-        if (state?.token) {
-          config.headers.Authorization = `Bearer ${state.token}`
+    if (isClerkEnabled) {
+      // Clerk session JWTs are short-lived; getToken() refreshes as needed.
+      const token = await getClerkToken()
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`
+      }
+    } else {
+      const authStorage = localStorage.getItem('auth-storage')
+      if (authStorage) {
+        try {
+          const { state } = JSON.parse(authStorage)
+          if (state?.token) {
+            config.headers.Authorization = `Bearer ${state.token}`
+          }
+        } catch (error) {
+          console.error('Error parsing auth storage:', error)
         }
-      } catch (error) {
-        console.error('Error parsing auth storage:', error)
       }
     }
   }
@@ -64,10 +73,14 @@ apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear auth and redirect to login
+      // Clear auth and redirect to the active login page
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth-storage')
-        window.location.href = '/login'
+        if (isClerkEnabled) {
+          window.location.href = '/sign-in'
+        } else {
+          localStorage.removeItem('auth-storage')
+          window.location.href = '/login'
+        }
       }
     }
     return Promise.reject(error)

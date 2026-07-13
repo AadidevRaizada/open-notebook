@@ -14,6 +14,11 @@ from pathlib import Path
 # Set to empty string instead of deleting to prevent it from being reloaded
 os.environ["OPEN_NOTEBOOK_PASSWORD"] = ""
 
+# Likewise disable Clerk JWT auth: a developer's .env may set CLERK_ISSUER /
+# CLERK_JWKS_URL for clerk-mode dev, and load_dotenv won't override these blanks
+os.environ["CLERK_ISSUER"] = ""
+os.environ["CLERK_JWKS_URL"] = ""
+
 # Load environment variables from .env file
 # This must be done BEFORE any imports that depend on environment variables
 from dotenv import load_dotenv

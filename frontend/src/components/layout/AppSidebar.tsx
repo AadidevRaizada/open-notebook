@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -30,7 +31,6 @@ import { Separator } from '@/components/ui/separator'
 import {
   Book,
   Search,
-  Mic,
   Bot,
   Shuffle,
   Settings,
@@ -41,9 +41,16 @@ import {
   Plus,
   Wrench,
   Command,
+  ShieldCheck,
 } from 'lucide-react'
 
 const getNavigation = (t: TFunction) => [
+  {
+    title: t('navigation.home'),
+    items: [
+      { name: t('navigation.askAndSearch'), href: '/search', icon: Search },
+    ],
+  },
   {
     title: t('navigation.collect'),
     items: [
@@ -54,22 +61,16 @@ const getNavigation = (t: TFunction) => [
     title: t('navigation.process'),
     items: [
       { name: t('navigation.notebooks'), href: '/notebooks', icon: Book },
-      { name: t('navigation.askAndSearch'), href: '/search', icon: Search },
-    ],
-  },
-  {
-    title: t('navigation.create'),
-    items: [
-      { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic },
     ],
   },
   {
     title: t('navigation.manage'),
     items: [
-      { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot },
-      { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle },
+      { name: t('navigation.admin'), href: '/admin', icon: ShieldCheck, adminOnly: true },
+      { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot, adminOnly: true },
+      { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, adminOnly: true },
       { name: t('navigation.settings'), href: '/settings', icon: Settings },
-      { name: t('navigation.advanced'), href: '/advanced', icon: Wrench },
+      { name: t('navigation.advanced'), href: '/advanced', icon: Wrench, adminOnly: true },
     ],
   },
 ] as const
@@ -78,7 +79,17 @@ type CreateTarget = 'source' | 'notebook' | 'podcast'
 
 export function AppSidebar() {
   const { t } = useTranslation()
+  const { isAdmin } = useIsAdmin()
+  // Admin-only entries (models, transformations, advanced) are hidden from
+  // regular users; the API additionally enforces this with 403s.
   const navigation = getNavigation(t)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => !('adminOnly' in item && item.adminOnly) || isAdmin
+      ),
+    }))
+    .filter((section) => section.items.length > 0)
   const pathname = usePathname()
   const { logout } = useAuth()
   const { isCollapsed, toggleCollapse } = useSidebarStore()
@@ -122,7 +133,7 @@ export function AppSidebar() {
             <div className="relative flex items-center justify-center w-full">
               <Image
                 src="/logo.svg"
-                alt="Open Notebook"
+                alt="IRS Knowledge base"
                 width={32}
                 height={32}
                 className="transition-opacity group-hover:opacity-0"
@@ -225,16 +236,6 @@ export function AppSidebar() {
                 >
                    <Book className="h-4 w-4" />
                   {t('common.notebook')}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault()
-                    handleCreateSelection('podcast')
-                  }}
-                  className="gap-2"
-                >
-                   <Mic className="h-4 w-4" />
-                  {t('common.podcast')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

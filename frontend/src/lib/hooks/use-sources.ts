@@ -26,6 +26,25 @@ export function useSources(notebookId?: string) {
 }
 
 /**
+ * Lightweight check for whether the user has added any sources at all,
+ * across all notebooks. Used to detect brand-new/empty knowledge bases
+ * (e.g. to show a first-time "add your first source" prompt) without
+ * fetching the full sources list.
+ */
+export function useHasAnySources() {
+  const query = useQuery({
+    queryKey: [...QUERY_KEYS.sources(undefined), 'has-any'],
+    queryFn: () => sourcesApi.list({ limit: 1 }),
+    staleTime: 60 * 1000,
+  })
+
+  return {
+    hasSources: (query.data?.length ?? 0) > 0,
+    isLoading: query.isLoading,
+  }
+}
+
+/**
  * Hook for fetching notebook sources with infinite scroll pagination.
  * Returns flattened sources array and pagination controls.
  */

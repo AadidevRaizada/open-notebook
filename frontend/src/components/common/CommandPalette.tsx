@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useId } from 'react'
 import { useRouter } from 'next/navigation'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 import { useNotebooks } from '@/lib/hooks/use-notebooks'
 import { useTheme } from '@/lib/stores/theme-store'
 import {
@@ -16,7 +17,6 @@ import {
 import {
   Book,
   Search,
-  Mic,
   Bot,
   Shuffle,
   Settings,
@@ -28,25 +28,32 @@ import {
   Moon,
   Monitor,
   Loader2,
+  ShieldCheck,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import type { TFunction } from 'i18next'
 
-const getNavigationItems = (t: TFunction) => [
+const getNavigationItems = (t: TFunction, isAdmin: boolean) => [
   { name: t('navigation.sources'), href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload'] },
   { name: t('navigation.notebooks'), href: '/notebooks', icon: Book, keywords: ['notes', 'research', 'projects'] },
   { name: t('navigation.askAndSearch'), href: '/search', icon: Search, keywords: ['find', 'query'] },
-  { name: t('navigation.podcasts'), href: '/podcasts', icon: Mic, keywords: ['audio', 'episodes', 'generate'] },
-  { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'] },
-  { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions'] },
+  // Admin-only destinations; the API enforces this with 403s as well.
+  ...(isAdmin
+    ? [
+        { name: t('navigation.admin'), href: '/admin', icon: ShieldCheck, keywords: ['users', 'invite', 'usage', 'accounts'] },
+        { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'] },
+        { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions'] },
+      ]
+    : []),
   { name: t('navigation.settings'), href: '/settings', icon: Settings, keywords: ['preferences', 'config', 'options'] },
-  { name: t('navigation.advanced'), href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools'] },
+  ...(isAdmin
+    ? [{ name: t('navigation.advanced'), href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools'] }]
+    : []),
 ]
 
 const getCreateItems = (t: TFunction) => [
   { name: t('common.newSource'), action: 'source', icon: FileText },
   { name: t('common.newNotebook'), action: 'notebook', icon: Book },
-  { name: t('common.newPodcast'), action: 'podcast', icon: Mic },
 ]
 
 const getThemeItems = (t: TFunction) => [
@@ -57,8 +64,9 @@ const getThemeItems = (t: TFunction) => [
 
 export function CommandPalette() {
   const { t } = useTranslation()
+  const { isAdmin } = useIsAdmin()
   const commandInputId = useId()
-  const navigationItems = useMemo(() => getNavigationItems(t), [t])
+  const navigationItems = useMemo(() => getNavigationItems(t, isAdmin), [t, isAdmin])
   const createItems = useMemo(() => getCreateItems(t), [t])
   const themeItems = useMemo(() => getThemeItems(t), [t])
   

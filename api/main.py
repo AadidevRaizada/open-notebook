@@ -14,7 +14,9 @@ from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from api.auth import PasswordAuthMiddleware
+from api.usage_tracker import UsageTrackingMiddleware
 from api.routers import (
+    admin,
     auth,
     chat,
     config,
@@ -23,6 +25,7 @@ from api.routers import (
     embedding,
     embedding_rebuild,
     episode_profiles,
+    export,
     insights,
     languages,
     models,
@@ -219,6 +222,10 @@ if CORS_IS_DEFAULT_WILDCARD:
 else:
     logger.info(f"CORS allowed origins: {CORS_ALLOWED_ORIGINS}")
 
+# Usage tracking runs inside auth (added first = innermost) so
+# request.state.user is already set when events are recorded.
+app.add_middleware(UsageTrackingMiddleware)
+
 # Add password authentication middleware first
 # Exclude /api/auth/status and /api/config from authentication
 app.add_middleware(
@@ -336,6 +343,7 @@ async def open_notebook_error_handler(request: Request, exc: OpenNotebookError):
 
 
 # Include routers
+app.include_router(admin.router, prefix="/api", tags=["admin"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(config.router, prefix="/api", tags=["config"])
 app.include_router(notebooks.router, prefix="/api", tags=["notebooks"])
@@ -347,6 +355,7 @@ app.include_router(embedding.router, prefix="/api", tags=["embedding"])
 app.include_router(
     embedding_rebuild.router, prefix="/api/embeddings", tags=["embeddings"]
 )
+app.include_router(export.router, prefix="/api", tags=["export"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(context.router, prefix="/api", tags=["context"])
 app.include_router(sources.router, prefix="/api", tags=["sources"])

@@ -20,6 +20,21 @@ Comprehensive list of all environment variables available in Open Notebook.
 
 ---
 
+## Authentication: Clerk (Multi-User)
+
+Setting either `CLERK_ISSUER` or `CLERK_JWKS_URL` switches the API into Clerk mode (per-user accounts and roles) instead of the shared password. See [Security Configuration](security.md#clerk-authentication--admin-panel) for the full guide.
+
+| Variable | Required? | Default | Description |
+|----------|-----------|---------|-------------|
+| `CLERK_ISSUER` | No | None | Clerk instance issuer URL (e.g. `https://your-app.clerk.accounts.dev`). Enables Clerk mode and is used to verify token issuer + derive the JWKS URL |
+| `CLERK_JWKS_URL` | No | Derived from `CLERK_ISSUER` | JWKS endpoint used to verify session-token signatures. Alternative to `CLERK_ISSUER` |
+| `CLERK_SECRET_KEY` | No | None | Clerk Backend API key. Required for Admin Panel user management (invite/role/ban/delete). Kept server-side only |
+| `CLERK_AUTHORIZED_PARTIES` | No | None | Optional comma-separated allow-list; rejects tokens whose `azp` is not listed |
+
+> Admin Panel access requires a user with `{"role": "admin"}` in their Clerk public metadata. Without `CLERK_SECRET_KEY`, user-management endpoints return `400` while usage tracking still works.
+
+---
+
 ## Database: SurrealDB
 
 | Variable | Required? | Default | Description |

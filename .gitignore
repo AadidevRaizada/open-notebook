@@ -115,6 +115,12 @@ desktop.ini
 # Log files
 *.log
 
+# Dev server logs captured to .txt (api/worker/frontend) — can be large, never commit
+*_log.txt
+api_log.txt
+worker_log.txt
+frontend_log.txt
+
 # Database files
 *.db
 *.sqlite3

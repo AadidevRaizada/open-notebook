@@ -8,7 +8,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AppShell } from '@/components/layout/AppShell'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
-import { FileText, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
+import { FileText, FileSpreadsheet, Link as LinkIcon, Upload, AlignLeft, Trash2, ArrowDown, ArrowUp, ArrowUpDown, Loader2 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,7 @@ import { getDateLocale } from '@/lib/utils/date-locale'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { getApiErrorKey } from '@/lib/utils/error-handler'
+import { exportApi } from '@/lib/api/export'
 
 export default function SourcesPage() {
   const { t, language } = useTranslation()
@@ -32,6 +33,7 @@ export default function SourcesPage() {
     open: false,
     source: null
   })
+  const [exporting, setExporting] = useState(false)
   const router = useRouter()
   const tableRef = useRef<HTMLTableElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -264,6 +266,19 @@ export default function SourcesPage() {
     setDeleteDialog({ open: true, source })
   }, [])
 
+  const handleExportSummary = async () => {
+    try {
+      setExporting(true)
+      await exportApi.downloadSummaryReport()
+      toast.success(t('sources.exportSummarySuccess'))
+    } catch (err: unknown) {
+      console.error('Failed to export summary report:', err)
+      toast.error(t('sources.exportSummaryError'))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.source) return
 
@@ -315,11 +330,25 @@ export default function SourcesPage() {
   return (
     <AppShell>
       <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
-        <div className="mb-6 flex-shrink-0">
-          <h1 className="text-3xl font-bold">{t('sources.allSources')}</h1>
-          <p className="mt-2 text-muted-foreground">
-            {t('sources.allSourcesDesc')}
-          </p>
+        <div className="mb-6 flex-shrink-0 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">{t('sources.allSources')}</h1>
+            <p className="mt-2 text-muted-foreground">
+              {t('sources.allSourcesDesc')}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleExportSummary}
+            disabled={exporting}
+          >
+            {exporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+            )}
+            {t('sources.exportSummary')}
+          </Button>
         </div>
 
         <div ref={scrollContainerRef} className="flex-1 rounded-md border overflow-auto">

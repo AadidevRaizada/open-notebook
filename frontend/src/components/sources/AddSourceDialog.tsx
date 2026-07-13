@@ -92,11 +92,27 @@ export function AddSourceDialog({
 }: AddSourceDialogProps) {
   const { t } = useTranslation()
 
-  const WIZARD_STEPS: readonly WizardStep[] = [
-    { number: 1, title: t('sources.addSource'), description: t('sources.processDescription') },
-    { number: 2, title: t('navigation.notebooks'), description: t('notebooks.searchPlaceholder') },
-    { number: 3, title: t('navigation.process'), description: t('sources.processDescription') },
-  ]
+  // Notebook-first flow: when opened from the global "+ New" entry point
+  // (no defaultNotebookId), let the user pick/create a notebook before
+  // choosing source content. When opened from inside a notebook page, the
+  // notebook is already known, so skip straight to the source step.
+  const showNotebookStep = !defaultNotebookId
+
+  const WIZARD_STEPS: readonly WizardStep[] = showNotebookStep
+    ? [
+        { number: 1, title: t('navigation.notebooks'), description: t('notebooks.searchPlaceholder') },
+        { number: 2, title: t('sources.addSource'), description: t('sources.processDescription') },
+        { number: 3, title: t('navigation.process'), description: t('sources.processDescription') },
+      ]
+    : [
+        { number: 1, title: t('sources.addSource'), description: t('sources.processDescription') },
+        { number: 2, title: t('navigation.process'), description: t('sources.processDescription') },
+      ]
+
+  const TOTAL_STEPS = WIZARD_STEPS.length
+  const NOTEBOOK_STEP = showNotebookStep ? 1 : null
+  const SOURCE_STEP = showNotebookStep ? 2 : 1
+  const PROCESSING_STEP = showNotebookStep ? 3 : 2
 
   // Simplified state management
   const [currentStep, setCurrentStep] = useState(1)
@@ -208,38 +224,36 @@ export function AddSourceDialog({
 
   // Step validation - now reactive with watched values
   const isStepValid = (step: number): boolean => {
-    switch (step) {
-      case 1:
-        if (!selectedType) return false
-        // Check batch size limit
-        if (isOverLimit) return false
-        // Check for URL validation errors
-        if (urlValidationErrors.length > 0) return false
+    if (step === SOURCE_STEP) {
+      if (!selectedType) return false
+      // Check batch size limit
+      if (isOverLimit) return false
+      // Check for URL validation errors
+      if (urlValidationErrors.length > 0) return false
 
-        if (selectedType === 'link') {
-          // In batch mode, check that we have at least one valid URL
-          if (isBatchMode) {
-            return parsedUrls.length > 0
-          }
-          return !!watchedUrl && watchedUrl.trim() !== ''
+      if (selectedType === 'link') {
+        // In batch mode, check that we have at least one valid URL
+        if (isBatchMode) {
+          return parsedUrls.length > 0
         }
-        if (selectedType === 'text') {
-          return !!watchedContent && watchedContent.trim() !== '' &&
-                 !!watchedTitle && watchedTitle.trim() !== ''
+        return !!watchedUrl && watchedUrl.trim() !== ''
+      }
+      if (selectedType === 'text') {
+        return !!watchedContent && watchedContent.trim() !== '' &&
+               !!watchedTitle && watchedTitle.trim() !== ''
+      }
+      if (selectedType === 'upload') {
+        if (watchedFile instanceof FileList) {
+          return watchedFile.length > 0 && watchedFile.length <= MAX_BATCH_SIZE
         }
-        if (selectedType === 'upload') {
-          if (watchedFile instanceof FileList) {
-            return watchedFile.length > 0 && watchedFile.length <= MAX_BATCH_SIZE
-          }
-          return !!watchedFile
-        }
-        return true
-      case 2:
-      case 3:
-        return true
-      default:
-        return false
+        return !!watchedFile
+      }
+      return true
     }
+    if (step === NOTEBOOK_STEP || step === PROCESSING_STEP) {
+      return true
+    }
+    return false
   }
 
   // Navigation
@@ -247,8 +261,8 @@ export function AddSourceDialog({
     e?.preventDefault()
     e?.stopPropagation()
 
-    // Validate URLs when leaving step 1 in link mode
-    if (currentStep === 1 && selectedType === 'link' && watchedUrl) {
+    // Validate URLs when leaving the source step in link mode
+    if (currentStep === SOURCE_STEP && selectedType === 'link' && watchedUrl) {
       const { invalid } = parseAndValidateUrls(watchedUrl)
       if (invalid.length > 0) {
         setUrlValidationErrors(invalid)
@@ -257,7 +271,7 @@ export function AddSourceDialog({
       setUrlValidationErrors([])
     }
 
-    if (currentStep < 3 && isStepValid(currentStep)) {
+    if (currentStep < TOTAL_STEPS && isStepValid(currentStep)) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -549,7 +563,7 @@ export function AddSourceDialog({
             onStepClick={handleStepClick}
             className="border-0"
           >
-            {currentStep === 1 && (
+            {currentStep === SOURCE_STEP && (
               <SourceTypeStep
                 // @ts-expect-error - Type inference issue with zod schema
                 control={control}
@@ -562,7 +576,7 @@ export function AddSourceDialog({
               />
             )}
             
-            {currentStep === 2 && (
+            {currentStep === NOTEBOOK_STEP && (
               <NotebooksStep
                 notebooks={notebooks}
                 selectedNotebooks={selectedNotebooks}
@@ -571,7 +585,7 @@ export function AddSourceDialog({
               />
             )}
             
-            {currentStep === 3 && (
+            {currentStep === PROCESSING_STEP && (
               <ProcessingStep
                 // @ts-expect-error - Type inference issue with zod schema
                 control={control}
@@ -605,8 +619,8 @@ export function AddSourceDialog({
                 </Button>
               )}
 
-              {/* Show Next button on steps 1 and 2, styled as outline/secondary */}
-              {currentStep < 3 && (
+              {/* Show Next button on all steps except the last, styled as outline/secondary */}
+              {currentStep < TOTAL_STEPS && (
                 <Button
                   type="button"
                   variant="outline"

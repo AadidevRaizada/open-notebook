@@ -7,8 +7,16 @@ import { Button } from '@/components/ui/button'
 import { ShieldAlert, AlertTriangle, ArrowRight, ExternalLink } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { useCredentialStatus, useEnvStatus } from '@/lib/hooks/use-credentials'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 
 export function SetupBanner() {
+  const { isAdmin } = useIsAdmin()
+  return isAdmin ? <SetupBannerContent /> : null
+}
+
+// Split so the credential-status queries (admin-only endpoints) never fire
+// for regular users.
+function SetupBannerContent() {
   const { t } = useTranslation()
   const { data: credentialStatus } = useCredentialStatus()
   const { data: envStatus } = useEnvStatus()

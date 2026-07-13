@@ -59,6 +59,23 @@ RUN i=0; until npm ci; do \
       echo "npm ci failed (attempt $i); retrying in 15s"; sleep 15; \
     done
 COPY frontend/ ./
+
+# Clerk config is exposed via NEXT_PUBLIC_* vars, which Next.js INLINES into the
+# client bundle at BUILD time. They must be present during `npm run build`, or
+# the built frontend has Clerk disabled and falls back to password mode (while
+# the API may be in Clerk mode → users get locked out). On Railway, set these as
+# service variables; Railway passes them to the build only because they are
+# declared as ARG here. The publishable key is not a secret (it ships to browsers).
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+ARG NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/
+ARG NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_URL \
+    NEXT_PUBLIC_CLERK_SIGN_UP_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_URL \
+    NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL \
+    NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=$NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL
 RUN npm run build
 
 # Return to app root
