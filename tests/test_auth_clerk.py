@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 import api.auth as auth_module
@@ -24,7 +24,14 @@ _private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 _public_key = _private_key.public_key()
 
 
-def make_token(role=None, expired=False, issuer=ISSUER):
+def make_token(
+    role=None,
+    expired=False,
+    issuer=ISSUER,
+    org_id="org_test123",
+    org_role="org:admin",
+    nested_org=False,
+):
     now = int(time.time())
     claims = {
         "sub": "user_123",
@@ -34,6 +41,15 @@ def make_token(role=None, expired=False, issuer=ISSUER):
     }
     if role is not None:
         claims["role"] = role
+    if org_id is not None:
+        if nested_org:
+            # Clerk default v2 session token shape: org info nested under "o".
+            claims["o"] = {"id": org_id, "rol": org_role}
+        else:
+            # Custom session-template claims: top-level org_id/org_role.
+            claims["org_id"] = org_id
+            if org_role is not None:
+                claims["org_role"] = org_role
     return jwt.encode(claims, _private_key, algorithm="RS256")
 
 
@@ -61,6 +77,10 @@ def client(monkeypatch):
     @app.get("/normal")
     async def normal():
         return {"ok": True}
+
+    @app.get("/whoami")
+    async def whoami(request: Request):
+        return getattr(request.state, "user", None) or {}
 
     @app.get("/admin-only", dependencies=[Depends(require_admin)])
     async def admin_only():
@@ -112,6 +132,38 @@ class TestAdminEnforcement:
     def test_regular_user_allowed_on_normal_route(self, client):
         token = make_token()
         assert client.get("/normal", headers=auth_header(token)).status_code == 200
+
+
+class TestOrganizationClaims:
+    """Per-org isolation relies on the active-organization claim being present."""
+
+    def test_org_claim_lands_in_request_state(self, client):
+        token = make_token(org_id="org_abc", org_role="org:admin")
+        r = client.get("/whoami", headers=auth_header(token))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["org_id"] == "org_abc"
+        assert body["org_role"] == "org:admin"
+
+    def test_nested_org_claim_supported(self, client):
+        # Clerk default v2 token nests org info under "o".
+        token = make_token(org_id="org_nested", org_role="org:member", nested_org=True)
+        r = client.get("/whoami", headers=auth_header(token))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["org_id"] == "org_nested"
+        assert body["org_role"] == "org:member"
+
+    def test_token_without_org_rejected(self, client):
+        # Fail closed: a Clerk session with no active org cannot be tenant-scoped.
+        token = make_token(org_id=None)
+        r = client.get("/normal", headers=auth_header(token))
+        assert r.status_code == 401
+        assert "organization" in r.json()["detail"].lower()
+
+    def test_token_without_org_rejected_on_admin_route(self, client):
+        token = make_token(role="admin", org_id=None)
+        assert client.get("/admin-only", headers=auth_header(token)).status_code == 401
 
 
 class TestPasswordModeCompatibility:

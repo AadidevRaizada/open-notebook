@@ -75,6 +75,26 @@ async def list_organizations() -> List[Dict[str, Any]]:
     return await clerk_client.list_organizations()
 
 
+@router.post("/admin/organizations/{organization_id}/join")
+async def join_organization(organization_id: str, request: Request) -> Dict[str, Any]:
+    """
+    Add the current admin to the given organization as an org admin.
+
+    This lets an admin switch into any org (via the sidebar OrganizationSwitcher)
+    to view/manage its isolated content. Clerk surfaces a friendly error if the
+    admin is already a member.
+    """
+    current = getattr(request.state, "user", None) or {}
+    user_id = current.get("id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="No authenticated user on request")
+    await clerk_client.add_organization_membership(
+        organization_id, user_id, role="org:admin"
+    )
+    logger.info(f"Admin {user_id} joined organization {organization_id}")
+    return {"joined": True, "organization_id": organization_id}
+
+
 @router.get("/admin/invitations")
 async def list_invitations() -> List[Dict[str, Any]]:
     # Instance-level invites plus pending invites of every organization,

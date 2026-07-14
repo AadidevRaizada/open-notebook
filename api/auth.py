@@ -10,6 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
+from open_notebook.org_context import reset_current_org_id, set_current_org_id
 from open_notebook.utils.encryption import get_secret_from_env
 
 
@@ -159,12 +160,43 @@ class PasswordAuthMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Invalid or expired session token"},
                     headers={"WWW-Authenticate": "Bearer"},
                 )
+
+            # Extract the active-organization claims. Clerk's default v2 session
+            # token nests them under "o" ({id, rol, ...}); custom session-template
+            # claims may surface them as top-level org_id/org_role. Read both.
+            org_claim = claims.get("o")
+            if not isinstance(org_claim, dict):
+                org_claim = {}
+            org_id = claims.get("org_id") or org_claim.get("id")
+            org_role = claims.get("org_role") or org_claim.get("rol")
+
+            # Fail closed: a Clerk session without an active organization cannot
+            # be scoped to any tenant, so we must not fall through to the shared
+            # workspace. Reject with an actionable message.
+            if not org_id:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "detail": (
+                            "No active organization on your session — sign out and "
+                            "back in, or ask your admin for an organization invite"
+                        )
+                    },
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
             request.state.user = {
                 "id": claims.get("sub"),
                 "email": claims.get("email"),
                 "role": claims.get("role"),
+                "org_id": org_id,
+                "org_role": org_role,
             }
-            return await call_next(request)
+            token = set_current_org_id(org_id)
+            try:
+                return await call_next(request)
+            finally:
+                reset_current_org_id(token)
 
         # Check password
         if credentials != self.password:

@@ -214,6 +214,7 @@ class PodcastEpisode(ObjectModel):
     """Enhanced PodcastEpisode with job tracking and metadata"""
 
     table_name: ClassVar[str] = "episode"
+    org_scoped: ClassVar[bool] = True
 
     name: str = Field(..., description="Episode name")
     episode_profile: Dict[str, Any] = Field(
@@ -235,6 +236,9 @@ class PodcastEpisode(ObjectModel):
     )
     command: Optional[Union[str, RecordID]] = Field(
         default=None, description="Link to surreal-commands job"
+    )
+    org_id: Optional[str] = Field(
+        default=None, description="Owning organization id (row-level isolation)"
     )
 
     model_config = ConfigDict(arbitrary_types_allowed=True)

@@ -34,6 +34,7 @@ from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Asset, Notebook, Source
 from open_notebook.domain.transformation import Transformation
 from open_notebook.exceptions import InvalidInputError, NotFoundError
+from open_notebook.org_context import current_org_id
 
 router = APIRouter()
 
@@ -245,18 +246,25 @@ async def get_sources(
                 },
             )
         else:
-            # Query all sources - include command field with FETCH
+            # Query all sources - include command field with FETCH.
+            # Scope to the active organization when set (Clerk mode).
+            org = current_org_id()
+            org_where = "WHERE org_id = $org" if org is not None else ""
             query = f"""
                 SELECT id, asset, created, title, updated, topics, command,
                 ({SOURCE_TYPE_EXPRESSION}) AS type,
                 (SELECT VALUE count() FROM source_insight WHERE source = $parent.id GROUP ALL)[0].count OR 0 AS insights_count,
                 (SELECT VALUE id FROM source_embedding WHERE source = $parent.id LIMIT 1) != [] AS embedded
                 FROM source
+                {org_where}
                 {order_clause}
                 LIMIT $limit START $offset
                 FETCH command
             """
-            result = await repo_query(query, {"limit": limit, "offset": offset})
+            query_params = {"limit": limit, "offset": offset}
+            if org is not None:
+                query_params["org"] = org
+            result = await repo_query(query, query_params)
 
         # Convert result to response model
         # Command data is already fetched via FETCH command clause

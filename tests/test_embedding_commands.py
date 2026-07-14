@@ -18,7 +18,8 @@ def test_legacy_embedding_commands_are_registered():
 @pytest.mark.asyncio
 async def test_legacy_embed_chunk_processes_stale_queue_payload(monkeypatch):
     mock_generate_embedding = AsyncMock(return_value=[0.1, 0.2, 0.3])
-    mock_repo_query = AsyncMock()
+    # First call resolves the parent source's org_id, second creates the chunk.
+    mock_repo_query = AsyncMock(return_value=["org_X"])
 
     monkeypatch.setattr(
         embedding_commands, "generate_embedding", mock_generate_embedding
@@ -44,13 +45,15 @@ async def test_legacy_embed_chunk_processes_stale_queue_payload(monkeypatch):
         content_type=embedding_commands.ContentType.PLAIN,
         command_id="unknown",
     )
-    mock_repo_query.assert_awaited_once()
+    # Two queries now: the org lookup, then the chunk CREATE (stamped with org_id).
+    assert mock_repo_query.await_count == 2
     assert mock_repo_query.await_args is not None
     assert mock_repo_query.await_args.args[1] == {
         "source_id": "record:source:abc",
         "order": 2,
         "content": "queued legacy chunk",
         "embedding": [0.1, 0.2, 0.3],
+        "org_id": "org_X",
     }
 
 

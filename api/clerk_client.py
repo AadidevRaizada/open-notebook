@@ -145,6 +145,24 @@ async def delete_organization(organization_id: str) -> None:
     await _request("DELETE", f"/organizations/{organization_id}")
 
 
+async def add_organization_membership(
+    organization_id: str, user_id: str, role: str = "org:admin"
+) -> Dict[str, Any]:
+    """
+    Add a user to an organization with the given role.
+
+    Used by the admin "Join" action so an admin can enter any org and manage
+    its (isolated) content. Clerk returns a 4xx with a descriptive message when
+    the user is already a member; that message is surfaced to the admin UI.
+    """
+    membership = await _request(
+        "POST",
+        f"/organizations/{organization_id}/memberships",
+        json={"user_id": user_id, "role": role},
+    )
+    return membership or {}
+
+
 def _slim_org_invitation(invitation: Dict[str, Any], org_name: Optional[str] = None) -> Dict[str, Any]:
     return {
         "id": invitation.get("id"),

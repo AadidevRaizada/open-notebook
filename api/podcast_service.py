@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from surreal_commands import get_command_status, submit_command
 
 from open_notebook.domain.notebook import Notebook
+from open_notebook.org_context import current_org_id
 from open_notebook.podcasts.models import EpisodeProfile, PodcastEpisode, SpeakerProfile
 
 
@@ -76,12 +77,15 @@ class PodcastService:
                 )
 
             # Prepare command arguments
+            # Capture the active org from request context here (the worker process
+            # has no request context) so the episode is stamped to the right tenant.
             command_args = {
                 "episode_profile": episode_profile_name,
                 "speaker_profile": speaker_profile_name,
                 "episode_name": episode_name,
                 "content": str(content),
                 "briefing_suffix": briefing_suffix,
+                "org_id": current_org_id(),
             }
 
             # Ensure command modules are imported before submitting

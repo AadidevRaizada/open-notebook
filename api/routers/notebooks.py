@@ -14,6 +14,7 @@ from api.models import (
 from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import Notebook, Source
 from open_notebook.exceptions import InvalidInputError, NotFoundError
+from open_notebook.org_context import current_org_id
 
 router = APIRouter()
 
@@ -86,16 +87,25 @@ async def get_notebooks(
                 detail=f"Invalid order_by format: '{order_by}'. Expected 'field' or 'field direction'",
             )
 
-        # Build the query with counts
+        # Build the query with counts. Scope to the active organization when set
+        # (Clerk mode); in password/none mode current_org_id() is None -> no filter.
+        org = current_org_id()
+        query_params: dict = {}
+        org_where = ""
+        if org is not None:
+            org_where = "WHERE org_id = $org"
+            query_params["org"] = org
+
         query = f"""
             SELECT *,
             count(<-reference.in) as source_count,
             count(<-artifact.in) as note_count
             FROM notebook
+            {org_where}
             ORDER BY {validated_order_by}
         """
 
-        result = await repo_query(query)
+        result = await repo_query(query, query_params)
 
         # Filter by archived status if specified
         if archived is not None:
@@ -158,25 +168,28 @@ async def get_recently_viewed(
 ):
     """Get recently viewed notebooks and sources, newest first."""
     try:
+        # Scope recently-viewed to the active organization when set.
+        org = current_org_id()
+        org_and = "AND org_id = $org" if org is not None else ""
         notebooks = await repo_query(
-            """
+            f"""
             SELECT id, name AS title, last_viewed_at
             FROM notebook
-            WHERE last_viewed_at != NONE AND last_viewed_at != NULL
+            WHERE last_viewed_at != NONE AND last_viewed_at != NULL {org_and}
             ORDER BY last_viewed_at DESC
             LIMIT $limit
             """,
-            {"limit": limit},
+            {"limit": limit, "org": org} if org is not None else {"limit": limit},
         )
         sources = await repo_query(
-            """
+            f"""
             SELECT id, title, last_viewed_at
             FROM source
-            WHERE last_viewed_at != NONE AND last_viewed_at != NULL
+            WHERE last_viewed_at != NONE AND last_viewed_at != NULL {org_and}
             ORDER BY last_viewed_at DESC
             LIMIT $limit
             """,
-            {"limit": limit},
+            {"limit": limit, "org": org} if org is not None else {"limit": limit},
         )
 
         items = [
@@ -237,6 +250,13 @@ async def get_notebook(notebook_id: str):
         result = await repo_query(query, {"notebook_id": ensure_record_id(notebook_id)})
 
         if not result:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+
+        # Enforce org ownership (this handler queries by id directly rather than
+        # via Notebook.get, so replicate the base-model check). Fail closed as 404.
+        org = current_org_id()
+        record_org = result[0].get("org_id")
+        if org is not None and record_org is not None and record_org != org:
             raise HTTPException(status_code=404, detail="Notebook not found")
 
         await _stamp_notebook_view(notebook_id)

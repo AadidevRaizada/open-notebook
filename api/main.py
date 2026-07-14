@@ -161,6 +161,45 @@ async def _run_database_migrations() -> None:
         logger.info("Database is already at the latest version. No migrations needed.")
 
 
+async def _backfill_default_org() -> None:
+    """
+    Stamp pre-existing content with DEFAULT_ORG_ID (one-time, idempotent).
+
+    When per-org isolation is first deployed, all legacy rows have org_id = NONE.
+    Setting DEFAULT_ORG_ID assigns them to a single organization (e.g. the primary
+    tenant) so existing data remains visible to that org after the cutover. The
+    UPDATE only touches rows where org_id IS NONE, so re-running on every startup
+    is safe and a no-op once backfilled. If DEFAULT_ORG_ID is unset, this is skipped.
+    """
+    default_org = os.getenv("DEFAULT_ORG_ID")
+    if not default_org:
+        return
+
+    from open_notebook.database.repository import repo_query
+
+    tables = [
+        "notebook",
+        "source",
+        "note",
+        "chat_session",
+        "source_embedding",
+        "source_insight",
+        "episode",
+        "usage_event",
+    ]
+    logger.info(f"Backfilling org_id={default_org} on rows with no organization...")
+    for table in tables:
+        try:
+            await repo_query(
+                f"UPDATE {table} SET org_id = $org WHERE org_id IS NONE;",
+                {"org": default_org},
+            )
+        except Exception as e:
+            # Non-fatal: a single table failing to backfill must not block startup.
+            logger.warning(f"org_id backfill failed for table '{table}': {e}")
+    logger.success("org_id backfill complete")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -187,6 +226,14 @@ async def lifespan(app: FastAPI):
         logger.exception(e)
         # Fail fast - don't start the API with an outdated database schema
         raise RuntimeError(f"Failed to run database migrations: {str(e)}") from e
+
+    # Backfill legacy rows with the default organization (idempotent, opt-in).
+    try:
+        await _backfill_default_org()
+    except Exception as e:
+        logger.warning(f"org_id backfill encountered errors: {e}")
+        # Non-fatal: isolation still works for new rows; legacy rows can be
+        # backfilled manually if needed.
 
     # Run podcast profile data migration (legacy strings -> Model registry)
     try:

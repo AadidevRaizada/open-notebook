@@ -24,6 +24,7 @@ class SubGraphState(TypedDict):
     results: dict
     answer: str
     ids: list  # Added for provide_answer function
+    org_id: str  # Active organization for row-level isolation (threaded explicitly)
 
 
 class Search(BaseModel):
@@ -46,6 +47,7 @@ class ThreadState(TypedDict):
     strategy: Strategy
     answers: Annotated[list, operator.add]
     final_answer: str
+    org_id: str  # Active organization for row-level isolation (threaded explicitly)
 
 
 async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
@@ -89,6 +91,7 @@ async def trigger_queries(state: ThreadState, config: RunnableConfig):
                 "instructions": s.instructions,
                 "term": s.term,
                 # "type": s.type,
+                "org_id": state.get("org_id"),
             },
         )
         for s in state["strategy"].searches
@@ -101,7 +104,9 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
         # if state["type"] == "text":
         #     results = text_search(state["term"], 10, True, True)
         # else:
-        results = await vector_search(state["term"], 10, True, True)
+        results = await vector_search(
+            state["term"], 10, True, True, org_id=state.get("org_id")
+        )
         if len(results) == 0:
             return {"answers": []}
         payload["results"] = results

@@ -24,6 +24,7 @@ from open_notebook.exceptions import (
     InvalidInputError,
     NotFoundError,
 )
+from open_notebook.org_context import current_org_id
 
 T = TypeVar("T", bound="ObjectModel")
 
@@ -32,6 +33,11 @@ class ObjectModel(BaseModel):
     id: Optional[str] = None
     table_name: ClassVar[str] = ""
     nullable_fields: ClassVar[set[str]] = set()  # Fields that can be saved as None
+    # Content models set org_scoped=True and declare an org_id field so save()
+    # stamps and get_all() filters by the active organization. Config models
+    # (Model, Credential, Transformation, profiles) leave this False and never
+    # declare org_id, so they stay global/shared across organizations.
+    org_scoped: ClassVar[bool] = False
     created: Optional[datetime] = None
     updated: Optional[datetime] = None
 
@@ -47,6 +53,16 @@ class ObjectModel(BaseModel):
                 raise InvalidInputError(
                     "get_all() must be called from a specific model class"
                 )
+            # Scope the listing to the active organization when one is set and
+            # this model is org-scoped. In password/none mode current_org_id() is
+            # None so no filter is added (single-workspace behavior preserved).
+            org = current_org_id()
+            query_params: Dict[str, Any] = {}
+            where_clause = ""
+            if org is not None and getattr(cls, "org_scoped", False):
+                where_clause = " WHERE org_id = $org"
+                query_params["org"] = org
+
             if order_by:
                 # Validate order_by to prevent SurrealQL injection
                 # Supports: "field", "field direction", "field1 direction, field2 direction"
@@ -81,11 +97,14 @@ class ObjectModel(BaseModel):
                         )
 
                 validated_order_by = ", ".join(validated_clauses)
-                query = f"SELECT * FROM {table_name} ORDER BY {validated_order_by}"
+                query = (
+                    f"SELECT * FROM {table_name}{where_clause} "
+                    f"ORDER BY {validated_order_by}"
+                )
             else:
-                query = f"SELECT * FROM {table_name}"
+                query = f"SELECT * FROM {table_name}{where_clause}"
 
-            result = await repo_query(query)
+            result = await repo_query(query, query_params)
             objects = []
             for obj in result:
                 try:
@@ -119,7 +138,19 @@ class ObjectModel(BaseModel):
 
             result = await repo_query("SELECT * FROM $id", {"id": ensure_record_id(id)})
             if result:
-                return target_class(**result[0])
+                record = result[0]
+                # Enforce organization ownership on by-id fetches. This is the
+                # single chokepoint for every GET/PUT/DELETE-by-id handler (they
+                # all fetch first). Fail closed with NotFoundError (not 403) so we
+                # never leak the existence of another org's record.
+                org = current_org_id()
+                if org is not None and isinstance(record, dict):
+                    record_org = record.get("org_id")
+                    if record_org is not None and record_org != org:
+                        raise NotFoundError(
+                            f"{table_name} with id {id} not found"
+                        )
+                return target_class(**record)
             else:
                 raise NotFoundError(f"{table_name} with id {id} not found")
         except Exception as e:
@@ -153,6 +184,14 @@ class ObjectModel(BaseModel):
         """
         try:
             self.model_validate(self.model_dump(), strict=True)
+            # Stamp the active organization on new records. Only applies when the
+            # model declares an org_id field and it isn't already set (worker-side
+            # code sets org_id explicitly before saving). In password/none mode
+            # current_org_id() is None, so nothing is stamped.
+            if "org_id" in type(self).model_fields and getattr(self, "org_id", None) is None:
+                org = current_org_id()
+                if org is not None:
+                    self.org_id = org
             data = self._prepare_save_data()
             data["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

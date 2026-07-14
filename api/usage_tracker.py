@@ -42,6 +42,7 @@ async def record_usage(
             {
                 "user_id": user.get("id") or "local",
                 "email": user.get("email") or "local",
+                "org_id": user.get("org_id"),
                 "action": action,
                 "details": details or {},
             },

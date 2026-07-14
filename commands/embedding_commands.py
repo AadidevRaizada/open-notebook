@@ -451,12 +451,15 @@ async def embed_source_command(input_data: EmbedSourceInput) -> EmbedSourceOutpu
             )
 
         # 6. Bulk INSERT source_embedding records
+        # Worker processes have no request context, so derive the owning org
+        # from the already-fetched parent source (row-level isolation).
         records = [
             {
                 "source": ensure_record_id(input_data.source_id),
                 "order": idx,
                 "content": chunk,
                 "embedding": embedding,
+                "org_id": getattr(source, "org_id", None),
             }
             for idx, (chunk, embedding) in enumerate(zip(chunks, embeddings))
         ]
@@ -621,6 +624,13 @@ async def legacy_embed_chunk_command(
             command_id=cmd_id,
         )
 
+        # Derive owning org from the parent source (no request context in worker).
+        source_org_rows = await repo_query(
+            "SELECT VALUE org_id FROM $source_id",
+            {"source_id": ensure_record_id(input_data.source_id)},
+        )
+        source_org_id = source_org_rows[0] if source_org_rows else None
+
         await repo_query(
             """
             CREATE source_embedding CONTENT {
@@ -628,6 +638,7 @@ async def legacy_embed_chunk_command(
                 "order": $order,
                 "content": $content,
                 "embedding": $embedding,
+                "org_id": $org_id,
             };
             """,
             {
@@ -635,6 +646,7 @@ async def legacy_embed_chunk_command(
                 "order": input_data.chunk_index,
                 "content": input_data.chunk_text,
                 "embedding": embedding,
+                "org_id": source_org_id,
             },
         )
 
@@ -757,18 +769,28 @@ async def create_insight_command(
         )
 
         # 1. Create insight record in database
+        # Worker processes have no request context; derive the owning org from
+        # the parent source so the insight stays scoped to the same tenant.
+        source_org_rows = await repo_query(
+            "SELECT VALUE org_id FROM $source_id",
+            {"source_id": ensure_record_id(input_data.source_id)},
+        )
+        source_org_id = source_org_rows[0] if source_org_rows else None
+
         result = await repo_query(
             """
             CREATE source_insight CONTENT {
                 "source": $source_id,
                 "insight_type": $insight_type,
-                "content": $content
+                "content": $content,
+                "org_id": $org_id
             };
             """,
             {
                 "source_id": ensure_record_id(input_data.source_id),
                 "insight_type": input_data.insight_type,
                 "content": input_data.content,
+                "org_id": source_org_id,
             },
         )
 

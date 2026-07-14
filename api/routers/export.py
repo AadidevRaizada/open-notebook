@@ -20,6 +20,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
 from open_notebook.database.repository import ensure_record_id, repo_query
+from open_notebook.org_context import current_org_id
 
 router = APIRouter(prefix="/export", tags=["export"])
 
@@ -87,19 +88,22 @@ async def export_summary_report(
 ):
     """Build and stream an .xlsx summarizing every source."""
     try:
+        # Scope the report to the active organization when set (Clerk mode).
+        org = current_org_id()
         report_scope = "all-sources"
         if notebook_id:
             nb_rows = await repo_query(
-                "SELECT name FROM ONLY $nb",
+                "SELECT name, org_id FROM ONLY $nb",
                 {"nb": ensure_record_id(notebook_id)},
             )
             if not nb_rows:
                 raise HTTPException(status_code=404, detail="Notebook not found")
-            nb_name = (
-                nb_rows.get("name")
-                if isinstance(nb_rows, dict)
-                else nb_rows[0].get("name")
-            ) or "notebook"
+            nb_row = nb_rows if isinstance(nb_rows, dict) else nb_rows[0]
+            # Enforce notebook ownership (fail closed as 404).
+            nb_org = nb_row.get("org_id")
+            if org is not None and nb_org is not None and nb_org != org:
+                raise HTTPException(status_code=404, detail="Notebook not found")
+            nb_name = nb_row.get("name") or "notebook"
             report_scope = re.sub(r"[^A-Za-z0-9._-]+", "-", nb_name).strip("-") or "notebook"
 
             rows = await repo_query(
@@ -112,13 +116,29 @@ async def export_summary_report(
             )
             sources = [r["source"] for r in rows if r.get("source")]
         else:
-            sources = await repo_query("SELECT * FROM source ORDER BY updated DESC")
+            if org is not None:
+                sources = await repo_query(
+                    "SELECT * FROM source WHERE org_id = $org ORDER BY updated DESC",
+                    {"org": org},
+                )
+            else:
+                sources = await repo_query(
+                    "SELECT * FROM source ORDER BY updated DESC"
+                )
 
         # One query each for insights and notebook links, grouped in Python,
-        # to avoid per-source round trips on bulky folders.
-        insight_rows = await repo_query(
-            "SELECT source, insight_type, content FROM source_insight"
-        )
+        # to avoid per-source round trips on bulky folders. These are joined by
+        # source id in Python; since `sources` is already org-scoped, only rows
+        # for in-scope sources are used, but we also scope the queries directly.
+        if org is not None:
+            insight_rows = await repo_query(
+                "SELECT source, insight_type, content FROM source_insight WHERE org_id = $org",
+                {"org": org},
+            )
+        else:
+            insight_rows = await repo_query(
+                "SELECT source, insight_type, content FROM source_insight"
+            )
         insights_by_source: Dict[str, List[Dict[str, Any]]] = {}
         for row in insight_rows or []:
             insights_by_source.setdefault(str(row.get("source")), []).append(row)
