@@ -50,6 +50,12 @@ export const frFR = {
     joinButton: "Rejoindre",
     joinSuccess: "Vous avez rejoint {org}",
     joinError: "Impossible de rejoindre l'organisation",
+    noMembers: "Aucun membre pour le moment.",
+    orgRoleAdmin: "Administrateur",
+    orgRoleMember: "Membre",
+    removeMember: "Retirer",
+    removeMemberConfirmTitle: "Retirer le membre ?",
+    removeMemberConfirmDesc: "Retirer {email} de {org} ? Cette personne perdra l'accès au contenu de cette organisation.",
     actions: {
       sourceCreated: "Sources",
       noteCreated: "Notes",

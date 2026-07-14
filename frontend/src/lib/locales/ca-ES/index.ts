@@ -50,6 +50,12 @@ export const caES = {
     joinButton: "Uneix-te",
     joinSuccess: "T'has unit a {org}",
     joinError: "No s'ha pogut unir a l'organització",
+    noMembers: "Encara no hi ha membres.",
+    orgRoleAdmin: "Administrador",
+    orgRoleMember: "Membre",
+    removeMember: "Elimina",
+    removeMemberConfirmTitle: "Voleu eliminar el membre?",
+    removeMemberConfirmDesc: "Voleu eliminar {email} de {org}? Perdrà l'accés al contingut d'aquesta organització.",
     actions: {
       sourceCreated: "Fonts",
       noteCreated: "Notes",

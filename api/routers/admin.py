@@ -95,6 +95,34 @@ async def join_organization(organization_id: str, request: Request) -> Dict[str,
     return {"joined": True, "organization_id": organization_id}
 
 
+@router.get("/admin/organizations/{organization_id}/members")
+async def list_organization_members(organization_id: str) -> List[Dict[str, Any]]:
+    """List the members of an organization (id, email, org role, joined)."""
+    return await clerk_client.list_organization_memberships(organization_id)
+
+
+class OrgRoleRequest(BaseModel):
+    # Organization-level role (distinct from the app-wide admin role).
+    role: Literal["org:admin", "org:member"]
+
+
+@router.patch("/admin/organizations/{organization_id}/members/{user_id}")
+async def set_organization_member_role(
+    organization_id: str, user_id: str, payload: OrgRoleRequest
+) -> Dict[str, Any]:
+    return await clerk_client.update_organization_membership(
+        organization_id, user_id, payload.role
+    )
+
+
+@router.delete("/admin/organizations/{organization_id}/members/{user_id}")
+async def remove_organization_member(
+    organization_id: str, user_id: str
+) -> Dict[str, Any]:
+    await clerk_client.remove_organization_membership(organization_id, user_id)
+    return {"removed": True}
+
+
 @router.get("/admin/invitations")
 async def list_invitations() -> List[Dict[str, Any]]:
     # Instance-level invites plus pending invites of every organization,

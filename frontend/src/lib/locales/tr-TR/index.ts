@@ -50,6 +50,12 @@ export const trTR = {
     joinButton: "Katıl",
     joinSuccess: "{org} kuruluşuna katıldınız",
     joinError: "Kuruluşa katılınamadı",
+    noMembers: "Henüz üye yok.",
+    orgRoleAdmin: "Yönetici",
+    orgRoleMember: "Üye",
+    removeMember: "Kaldır",
+    removeMemberConfirmTitle: "Üye kaldırılsın mı?",
+    removeMemberConfirmDesc: "{email} kullanıcısını {org} kuruluşundan kaldır? Bu kuruluşun içeriğine erişimini kaybeder.",
     actions: {
       sourceCreated: "Kaynaklar",
       noteCreated: "Notlar",

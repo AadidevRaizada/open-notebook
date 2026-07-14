@@ -50,6 +50,12 @@ export const plPL = {
     joinButton: "Dołącz",
     joinSuccess: "Dołączono do {org}",
     joinError: "Nie udało się dołączyć do organizacji",
+    noMembers: "Brak członków.",
+    orgRoleAdmin: "Administrator",
+    orgRoleMember: "Członek",
+    removeMember: "Usuń",
+    removeMemberConfirmTitle: "Usunąć członka?",
+    removeMemberConfirmDesc: "Usunąć {email} z {org}? Utraci dostęp do treści tej organizacji.",
     actions: {
       sourceCreated: "Źródła",
       noteCreated: "Notatki",

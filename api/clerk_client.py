@@ -163,6 +163,50 @@ async def add_organization_membership(
     return membership or {}
 
 
+def _slim_org_membership(m: Dict[str, Any]) -> Dict[str, Any]:
+    pud = m.get("public_user_data") or {}
+    return {
+        "user_id": pud.get("user_id"),
+        "email": pud.get("identifier"),
+        "first_name": pud.get("first_name"),
+        "last_name": pud.get("last_name"),
+        "image_url": pud.get("image_url"),
+        "role": m.get("role"),
+        "created_at": m.get("created_at"),
+    }
+
+
+async def list_organization_memberships(
+    organization_id: str, limit: int = 100, offset: int = 0
+) -> List[Dict[str, Any]]:
+    result = await _request(
+        "GET",
+        f"/organizations/{organization_id}/memberships",
+        params={"limit": limit, "offset": offset},
+    )
+    data = result.get("data", []) if isinstance(result, dict) else (result or [])
+    return [_slim_org_membership(m) for m in data]
+
+
+async def update_organization_membership(
+    organization_id: str, user_id: str, role: str
+) -> Dict[str, Any]:
+    membership = await _request(
+        "PATCH",
+        f"/organizations/{organization_id}/memberships/{user_id}",
+        json={"role": role},
+    )
+    return _slim_org_membership(membership or {})
+
+
+async def remove_organization_membership(
+    organization_id: str, user_id: str
+) -> None:
+    await _request(
+        "DELETE", f"/organizations/{organization_id}/memberships/{user_id}"
+    )
+
+
 def _slim_org_invitation(invitation: Dict[str, Any], org_name: Optional[str] = None) -> Dict[str, Any]:
     return {
         "id": invitation.get("id"),

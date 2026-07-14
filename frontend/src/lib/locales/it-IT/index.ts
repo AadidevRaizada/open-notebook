@@ -50,6 +50,12 @@ export const itIT = {
     joinButton: "Unisciti",
     joinSuccess: "Ti sei unito a {org}",
     joinError: "Impossibile unirsi all'organizzazione",
+    noMembers: "Ancora nessun membro.",
+    orgRoleAdmin: "Amministratore",
+    orgRoleMember: "Membro",
+    removeMember: "Rimuovi",
+    removeMemberConfirmTitle: "Rimuovere il membro?",
+    removeMemberConfirmDesc: "Rimuovere {email} da {org}? Perderà l'accesso ai contenuti di questa organizzazione.",
     actions: {
       sourceCreated: "Fonti",
       noteCreated: "Note",

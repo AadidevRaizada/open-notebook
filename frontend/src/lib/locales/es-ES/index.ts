@@ -50,6 +50,12 @@ export const esES = {
     joinButton: "Unirse",
     joinSuccess: "Te has unido a {org}",
     joinError: "No se pudo unir a la organización",
+    noMembers: "Aún no hay miembros.",
+    orgRoleAdmin: "Administrador",
+    orgRoleMember: "Miembro",
+    removeMember: "Eliminar",
+    removeMemberConfirmTitle: "¿Eliminar miembro?",
+    removeMemberConfirmDesc: "¿Eliminar a {email} de {org}? Perderá el acceso al contenido de esta organización.",
     actions: {
       sourceCreated: "Fuentes",
       noteCreated: "Notas",

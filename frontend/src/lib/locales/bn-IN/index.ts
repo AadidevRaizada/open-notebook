@@ -50,6 +50,12 @@ export const bnIN = {
     joinButton: "যোগ দিন",
     joinSuccess: "{org}-এ যোগ দিয়েছেন",
     joinError: "সংস্থায় যোগ দিতে ব্যর্থ হয়েছে",
+    noMembers: "এখনও কোনো সদস্য নেই।",
+    orgRoleAdmin: "অ্যাডমিন",
+    orgRoleMember: "সদস্য",
+    removeMember: "সরান",
+    removeMemberConfirmTitle: "সদস্য সরাবেন?",
+    removeMemberConfirmDesc: "{org} থেকে {email}-কে সরাবেন? তিনি এই সংস্থার কন্টেন্টে অ্যাক্সেস হারাবেন।",
     actions: {
       sourceCreated: "উৎস",
       noteCreated: "নোট",

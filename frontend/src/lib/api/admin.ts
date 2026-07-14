@@ -30,6 +30,16 @@ export interface AdminOrganization {
   created_at: number | null
 }
 
+export interface OrgMember {
+  user_id: string
+  email: string | null
+  first_name: string | null
+  last_name: string | null
+  image_url: string | null
+  role: string
+  created_at: number | null
+}
+
 // Exactly one of organizationName (create a new org, invitee becomes its
 // admin) or organizationId (join an existing org as member) should be set.
 export interface InviteUserInput {
@@ -82,6 +92,25 @@ export const adminApi = {
         `/admin/organizations/${organizationId}/join`
       )
     ).data,
+
+  listOrgMembers: async (organizationId: string): Promise<OrgMember[]> =>
+    (await apiClient.get<OrgMember[]>(`/admin/organizations/${organizationId}/members`)).data,
+
+  setOrgMemberRole: async (
+    organizationId: string,
+    userId: string,
+    role: 'org:admin' | 'org:member'
+  ): Promise<OrgMember> =>
+    (
+      await apiClient.patch<OrgMember>(
+        `/admin/organizations/${organizationId}/members/${userId}`,
+        { role }
+      )
+    ).data,
+
+  removeOrgMember: async (organizationId: string, userId: string): Promise<void> => {
+    await apiClient.delete(`/admin/organizations/${organizationId}/members/${userId}`)
+  },
 
   inviteUser: async ({ email, organizationName, organizationId }: InviteUserInput): Promise<AdminInvitation> =>
     (

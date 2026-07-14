@@ -50,6 +50,12 @@ export const ruRU = {
     joinButton: "Присоединиться",
     joinSuccess: "Вы присоединились к {org}",
     joinError: "Не удалось присоединиться к организации",
+    noMembers: "Пока нет участников.",
+    orgRoleAdmin: "Администратор",
+    orgRoleMember: "Участник",
+    removeMember: "Удалить",
+    removeMemberConfirmTitle: "Удалить участника?",
+    removeMemberConfirmDesc: "Удалить {email} из {org}? Он потеряет доступ к содержимому этой организации.",
     actions: {
       sourceCreated: "Источники",
       noteCreated: "Заметки",

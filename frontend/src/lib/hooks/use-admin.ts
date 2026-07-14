@@ -101,6 +101,48 @@ export function useJoinOrganization() {
   })
 }
 
+export function useOrgMembers(organizationId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [...ADMIN_QUERY_KEYS.organizations, organizationId, 'members'] as const,
+    queryFn: () => adminApi.listOrgMembers(organizationId as string),
+    enabled: enabled && !!organizationId,
+  })
+}
+
+export function useSetOrgMemberRole() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      organizationId,
+      userId,
+      role,
+    }: {
+      organizationId: string
+      userId: string
+      role: 'org:admin' | 'org:member'
+    }) => adminApi.setOrgMemberRole(organizationId, userId, role),
+    onSuccess: (_data, { organizationId }) => {
+      queryClient.invalidateQueries({
+        queryKey: [...ADMIN_QUERY_KEYS.organizations, organizationId, 'members'],
+      })
+    },
+  })
+}
+
+export function useRemoveOrgMember() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ organizationId, userId }: { organizationId: string; userId: string }) =>
+      adminApi.removeOrgMember(organizationId, userId),
+    onSuccess: (_data, { organizationId }) => {
+      queryClient.invalidateQueries({
+        queryKey: [...ADMIN_QUERY_KEYS.organizations, organizationId, 'members'],
+      })
+      queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEYS.organizations })
+    },
+  })
+}
+
 function useClerkCurrentUserId(): string | null {
   const { user } = useUser()
   return user?.id ?? null

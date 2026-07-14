@@ -50,6 +50,12 @@ export const enUS = {
     joinButton: "Join",
     joinSuccess: "Joined {org}",
     joinError: "Failed to join organization",
+    noMembers: "No members yet.",
+    orgRoleAdmin: "Admin",
+    orgRoleMember: "Member",
+    removeMember: "Remove",
+    removeMemberConfirmTitle: "Remove member?",
+    removeMemberConfirmDesc: "Remove {email} from {org}? They lose access to this organization's content.",
     actions: {
       sourceCreated: "Sources",
       noteCreated: "Notes",

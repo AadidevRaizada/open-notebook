@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
@@ -42,7 +42,6 @@ import {
   FileText,
   Plus,
   Wrench,
-  Command,
   ShieldCheck,
 } from 'lucide-react'
 
@@ -98,12 +97,6 @@ export function AppSidebar() {
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
 
   const [createMenuOpen, setCreateMenuOpen] = useState(false)
-  const [isMac, setIsMac] = useState(true) // Default to Mac for SSR
-
-  // Detect platform for keyboard shortcut display
-  useEffect(() => {
-    setIsMac(navigator.platform.toLowerCase().includes('mac'))
-  }, [])
 
   const handleCreateSelection = (target: CreateTarget) => {
     setCreateMenuOpen(false)
@@ -301,103 +294,81 @@ export function AppSidebar() {
             isCollapsed && 'px-2'
           )}
         >
-          {/* Command Palette hint */}
-          {!isCollapsed && (
-            <div className="px-3 py-1.5 text-xs text-sidebar-foreground/60">
-              <div className="flex items-center justify-between">
-                 <span className="flex items-center gap-1.5">
-                  <Command className="h-3 w-3" />
-                  {t('common.quickActions')}
-                </span>
-                <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                  {isMac ? <span className="text-xs">⌘</span> : <span>Ctrl+</span>}K
-                </kbd>
-              </div>
-               <p className="mt-1 text-[10px] text-sidebar-foreground/40">
-                {t('common.quickActionsDesc')}
-              </p>
+          {/* Organization — switch only. Creating orgs, inviting members and
+              joining orgs all live in one place: the Admin page. */}
+          {isClerkEnabled && (
+            <div className={cn('flex', isCollapsed ? 'justify-center' : 'w-full')}>
+              <OrganizationSwitcher
+                hidePersonal
+                afterSelectOrganizationUrl="/notebooks"
+                appearance={{
+                  elements: {
+                    rootBox: isCollapsed ? '' : 'w-full',
+                    organizationSwitcherTrigger: cn(
+                      'rounded-md border border-sidebar-border',
+                      isCollapsed
+                        ? 'justify-center px-1 py-1'
+                        : 'w-full justify-start gap-2 px-2 py-1.5'
+                    ),
+                    organizationPreviewTextContainer: isCollapsed ? 'hidden' : '',
+                    // Keep the switcher a pure org-switcher; management is in Admin.
+                    organizationSwitcherPopoverActionButton__createOrganization: 'hidden',
+                    organizationSwitcherPopoverActionButton__manageOrganization: 'hidden',
+                  },
+                }}
+              />
             </div>
           )}
 
-           <div
-            className={cn(
-              'flex flex-col gap-2',
-              isCollapsed ? 'items-center' : 'items-stretch'
-            )}
-          >
-            {/* Organization switcher (Clerk mode only). Admin can switch the
-                active org; content is isolated per org on the backend. */}
-            {isClerkEnabled && (
-              <div className={cn('flex', isCollapsed ? 'justify-center' : 'w-full')}>
-                <OrganizationSwitcher
-                  hidePersonal
-                  afterSelectOrganizationUrl="/notebooks"
-                  appearance={{
-                    elements: {
-                      rootBox: isCollapsed ? '' : 'w-full',
-                      organizationSwitcherTrigger: cn(
-                        'rounded-md border border-sidebar-border',
-                        isCollapsed
-                          ? 'justify-center px-1 py-1'
-                          : 'w-full justify-start gap-2 px-2 py-1.5'
-                      ),
-                      organizationPreviewTextContainer: isCollapsed ? 'hidden' : '',
-                    },
-                  }}
-                />
-              </div>
-            )}
-            {isCollapsed ? (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <ThemeToggle iconOnly />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{t('common.theme')}</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <LanguageToggle iconOnly />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">{t('common.language')}</TooltipContent>
-                </Tooltip>
-              </>
-            ) : (
-              <>
-                <ThemeToggle />
-                <LanguageToggle />
-              </>
-            )}
-          </div>
-
           {isCollapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full justify-center sidebar-menu-item"
-                  onClick={logout}
-                  aria-label={t('common.signOut')}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-               <TooltipContent side="right">{t('common.signOut')}</TooltipContent>
-            </Tooltip>
+            <div className="flex flex-col items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <ThemeToggle iconOnly />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">{t('common.theme')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <LanguageToggle iconOnly />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="right">{t('common.language')}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="sidebar-menu-item"
+                    onClick={logout}
+                    aria-label={t('common.signOut')}
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">{t('common.signOut')}</TooltipContent>
+              </Tooltip>
+            </div>
           ) : (
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-3 sidebar-menu-item"
-              onClick={logout}
-              aria-label={t('common.signOut')}
-             >
-              <LogOut className="h-4 w-4" />
-              {t('common.signOut')}
-            </Button>
+            <div className="flex items-center gap-1">
+              <ThemeToggle iconOnly />
+              <LanguageToggle iconOnly />
+              <div className="flex-1" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                onClick={logout}
+                aria-label={t('common.signOut')}
+              >
+                <LogOut className="h-4 w-4" />
+                {t('common.signOut')}
+              </Button>
+            </div>
           )}
         </div>
       </div>

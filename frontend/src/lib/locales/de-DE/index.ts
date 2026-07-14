@@ -53,6 +53,12 @@ export const deDE = {
     joinButton: "Beitreten",
     joinSuccess: "{org} beigetreten",
     joinError: "Beitritt zur Organisation fehlgeschlagen",
+    noMembers: "Noch keine Mitglieder.",
+    orgRoleAdmin: "Admin",
+    orgRoleMember: "Mitglied",
+    removeMember: "Entfernen",
+    removeMemberConfirmTitle: "Mitglied entfernen?",
+    removeMemberConfirmDesc: "{email} aus {org} entfernen? Der Zugriff auf die Inhalte dieser Organisation geht verloren.",
     actions: {
       sourceCreated: "Quellen",
       noteCreated: "Notizen",

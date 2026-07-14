@@ -50,6 +50,12 @@ export const ptBR = {
     joinButton: "Entrar",
     joinSuccess: "Você entrou em {org}",
     joinError: "Falha ao entrar na organização",
+    noMembers: "Ainda não há membros.",
+    orgRoleAdmin: "Administrador",
+    orgRoleMember: "Membro",
+    removeMember: "Remover",
+    removeMemberConfirmTitle: "Remover membro?",
+    removeMemberConfirmDesc: "Remover {email} de {org}? Ele perderá o acesso ao conteúdo desta organização.",
     actions: {
       sourceCreated: "Fontes",
       noteCreated: "Notas",

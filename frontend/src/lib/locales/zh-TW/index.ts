@@ -50,6 +50,12 @@ export const zhTW = {
     joinButton: "加入",
     joinSuccess: "已加入 {org}",
     joinError: "加入組織失敗",
+    noMembers: "尚無成員。",
+    orgRoleAdmin: "管理員",
+    orgRoleMember: "成員",
+    removeMember: "移除",
+    removeMemberConfirmTitle: "移除成員？",
+    removeMemberConfirmDesc: "將 {email} 從 {org} 中移除？該成員將失去對此組織內容的存取權限。",
     actions: {
       sourceCreated: "來源",
       noteCreated: "筆記",

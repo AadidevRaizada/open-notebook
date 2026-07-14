@@ -50,6 +50,12 @@ export const jaJP = {
     joinButton: "参加",
     joinSuccess: "{org} に参加しました",
     joinError: "組織への参加に失敗しました",
+    noMembers: "まだメンバーがいません。",
+    orgRoleAdmin: "管理者",
+    orgRoleMember: "メンバー",
+    removeMember: "削除",
+    removeMemberConfirmTitle: "メンバーを削除しますか？",
+    removeMemberConfirmDesc: "{email} を {org} から削除しますか？この組織のコンテンツにアクセスできなくなります。",
     actions: {
       sourceCreated: "ソース",
       noteCreated: "ノート",

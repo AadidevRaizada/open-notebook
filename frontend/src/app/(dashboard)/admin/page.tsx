@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { AxiosError } from 'axios'
 import {
   Ban,
+  ChevronRight,
   Loader2,
   LogIn,
   MailPlus,
@@ -46,7 +47,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { AdminUser } from '@/lib/api/admin'
+import type { AdminUser, AdminOrganization, OrgMember } from '@/lib/api/admin'
+import { cn } from '@/lib/utils'
 import {
   useAdminInvitations,
   useAdminOrganizations,
@@ -58,7 +60,10 @@ import {
   useDeleteUser,
   useInviteUser,
   useJoinOrganization,
+  useOrgMembers,
+  useRemoveOrgMember,
   useRevokeInvitation,
+  useSetOrgMemberRole,
   useSetUserRole,
 } from '@/lib/hooks/use-admin'
 
@@ -163,7 +168,6 @@ function UsersTab() {
   const setUserRole = useSetUserRole()
   const banUser = useBanUser()
   const deleteUser = useDeleteUser()
-  const joinOrganization = useJoinOrganization()
 
   if (statusLoading) {
     return (
@@ -415,40 +419,7 @@ function UsersTab() {
         ) : (
           <div className="divide-y">
             {(organizations ?? []).map((org) => (
-              <div key={org.id} className="flex items-center justify-between py-3 gap-3">
-                <div className="min-w-0">
-                  <div className="font-medium truncate">{org.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {t('adminPage.membersCount').replace(
-                      '{count}',
-                      String(org.members_count ?? 0)
-                    )}
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={joinOrganization.isPending}
-                  onClick={() =>
-                    joinOrganization.mutate(org.id, {
-                      onSuccess: () =>
-                        toast.success(
-                          t('adminPage.joinSuccess').replace('{org}', org.name)
-                        ),
-                      onError: (error) =>
-                        toast.error(errorDetail(error) ?? t('adminPage.joinError')),
-                    })
-                  }
-                >
-                  {joinOrganization.isPending &&
-                  joinOrganization.variables === org.id ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <LogIn className="h-4 w-4 mr-2" />
-                  )}
-                  {t('adminPage.joinButton')}
-                </Button>
-              </div>
+              <OrgRow key={org.id} org={org} />
             ))}
           </div>
         )}
@@ -490,6 +461,164 @@ function UsersTab() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+function OrgRow({ org }: { org: AdminOrganization }) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+  const [confirmRemove, setConfirmRemove] = useState<OrgMember | null>(null)
+
+  const joinOrganization = useJoinOrganization()
+  const { data: members, isLoading } = useOrgMembers(org.id, expanded)
+  const setRole = useSetOrgMemberRole()
+  const removeMember = useRemoveOrgMember()
+
+  const memberCallbacks = {
+    onSuccess: () => toast.success(t('adminPage.actionSuccess')),
+    onError: (error: unknown) =>
+      toast.error(errorDetail(error) ?? t('adminPage.actionError')),
+  }
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 items-center gap-2 text-left"
+          aria-expanded={expanded}
+        >
+          <ChevronRight
+            className={cn(
+              'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+              expanded && 'rotate-90'
+            )}
+          />
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{org.name}</span>
+            <span className="block text-xs text-muted-foreground">
+              {t('adminPage.membersCount').replace(
+                '{count}',
+                String(org.members_count ?? 0)
+              )}
+            </span>
+          </span>
+        </button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={joinOrganization.isPending}
+          onClick={() =>
+            joinOrganization.mutate(org.id, {
+              onSuccess: () =>
+                toast.success(t('adminPage.joinSuccess').replace('{org}', org.name)),
+              onError: (error) =>
+                toast.error(errorDetail(error) ?? t('adminPage.joinError')),
+            })
+          }
+        >
+          {joinOrganization.isPending && joinOrganization.variables === org.id ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <LogIn className="mr-2 h-4 w-4" />
+          )}
+          {t('adminPage.joinButton')}
+        </Button>
+      </div>
+
+      {expanded && (
+        <div className="ml-6 mt-3 space-y-1">
+          {isLoading ? (
+            <div className="flex justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : (members ?? []).length === 0 ? (
+            <p className="py-1 text-sm text-muted-foreground">
+              {t('adminPage.noMembers')}
+            </p>
+          ) : (
+            (members ?? []).map((m) => (
+              <div
+                key={m.user_id}
+                className="flex items-center justify-between gap-2 py-1 text-sm"
+              >
+                <span className="min-w-0 truncate">{m.email ?? m.user_id}</span>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={m.role}
+                    onValueChange={(role) =>
+                      setRole.mutate(
+                        {
+                          organizationId: org.id,
+                          userId: m.user_id,
+                          role: role as 'org:admin' | 'org:member',
+                        },
+                        memberCallbacks
+                      )
+                    }
+                  >
+                    <SelectTrigger className="h-7 w-28 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="org:admin">
+                        {t('adminPage.orgRoleAdmin')}
+                      </SelectItem>
+                      <SelectItem value="org:member">
+                        {t('adminPage.orgRoleMember')}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    aria-label={t('adminPage.removeMember')}
+                    onClick={() => setConfirmRemove(m)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      <AlertDialog
+        open={confirmRemove !== null}
+        onOpenChange={(open) => !open && setConfirmRemove(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t('adminPage.removeMemberConfirmTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('adminPage.removeMemberConfirmDesc')
+                .replace('{email}', confirmRemove?.email ?? confirmRemove?.user_id ?? '')
+                .replace('{org}', org.name)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!confirmRemove) return
+                removeMember.mutate(
+                  { organizationId: org.id, userId: confirmRemove.user_id },
+                  memberCallbacks
+                )
+                setConfirmRemove(null)
+              }}
+            >
+              {t('adminPage.removeMember')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }
 

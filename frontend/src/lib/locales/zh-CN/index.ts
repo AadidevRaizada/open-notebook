@@ -50,6 +50,12 @@ export const zhCN = {
     joinButton: "加入",
     joinSuccess: "已加入 {org}",
     joinError: "加入组织失败",
+    noMembers: "暂无成员。",
+    orgRoleAdmin: "管理员",
+    orgRoleMember: "成员",
+    removeMember: "移除",
+    removeMemberConfirmTitle: "移除成员？",
+    removeMemberConfirmDesc: "将 {email} 从 {org} 中移除？该成员将失去对此组织内容的访问权限。",
     actions: {
       sourceCreated: "来源",
       noteCreated: "笔记",
