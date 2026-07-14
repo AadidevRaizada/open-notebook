@@ -43,6 +43,13 @@ export const zhCN = {
     usageTotal: "总计",
     lastActive: "最后活跃",
     recentActivity: "最近活动",
+    organizationsTitle: "组织",
+    organizationsDesc: "加入任意组织以查看和管理其隔离的内容。可在侧边栏切换活动组织。",
+    organizationsEmpty: "暂无组织。",
+    membersCount: "{count} 名成员",
+    joinButton: "加入",
+    joinSuccess: "已加入 {org}",
+    joinError: "加入组织失败",
     actions: {
       sourceCreated: "来源",
       noteCreated: "笔记",

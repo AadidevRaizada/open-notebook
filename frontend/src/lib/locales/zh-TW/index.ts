@@ -43,6 +43,13 @@ export const zhTW = {
     usageTotal: "總計",
     lastActive: "最後活躍",
     recentActivity: "最近活動",
+    organizationsTitle: "組織",
+    organizationsDesc: "加入任何組織以檢視和管理其隔離的內容。可在側邊欄切換使用中的組織。",
+    organizationsEmpty: "尚無組織。",
+    membersCount: "{count} 名成員",
+    joinButton: "加入",
+    joinSuccess: "已加入 {org}",
+    joinError: "加入組織失敗",
     actions: {
       sourceCreated: "來源",
       noteCreated: "筆記",

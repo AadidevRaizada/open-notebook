@@ -43,6 +43,13 @@ export const frFR = {
     usageTotal: "Total",
     lastActive: "Dernière activité",
     recentActivity: "Activité récente",
+    organizationsTitle: "Organisations",
+    organizationsDesc: "Rejoignez une organisation pour afficher et gérer son contenu isolé. Changez d'organisation active depuis la barre latérale.",
+    organizationsEmpty: "Aucune organisation pour le moment.",
+    membersCount: "{count} membres",
+    joinButton: "Rejoindre",
+    joinSuccess: "Vous avez rejoint {org}",
+    joinError: "Impossible de rejoindre l'organisation",
     actions: {
       sourceCreated: "Sources",
       noteCreated: "Notes",

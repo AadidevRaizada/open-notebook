@@ -43,6 +43,13 @@ export const plPL = {
     usageTotal: "Razem",
     lastActive: "Ostatnia aktywność",
     recentActivity: "Ostatnia aktywność",
+    organizationsTitle: "Organizacje",
+    organizationsDesc: "Dołącz do dowolnej organizacji, aby wyświetlać i zarządzać jej izolowaną zawartością. Aktywną organizację zmienisz na pasku bocznym.",
+    organizationsEmpty: "Brak organizacji.",
+    membersCount: "Liczba członków: {count}",
+    joinButton: "Dołącz",
+    joinSuccess: "Dołączono do {org}",
+    joinError: "Nie udało się dołączyć do organizacji",
     actions: {
       sourceCreated: "Źródła",
       noteCreated: "Notatki",

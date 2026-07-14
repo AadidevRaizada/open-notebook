@@ -43,6 +43,13 @@ export const jaJP = {
     usageTotal: "合計",
     lastActive: "最終アクティブ",
     recentActivity: "最近のアクティビティ",
+    organizationsTitle: "組織",
+    organizationsDesc: "組織に参加して、その分離されたコンテンツを表示・管理します。アクティブな組織はサイドバーから切り替えられます。",
+    organizationsEmpty: "まだ組織がありません。",
+    membersCount: "メンバー {count} 人",
+    joinButton: "参加",
+    joinSuccess: "{org} に参加しました",
+    joinError: "組織への参加に失敗しました",
     actions: {
       sourceCreated: "ソース",
       noteCreated: "ノート",

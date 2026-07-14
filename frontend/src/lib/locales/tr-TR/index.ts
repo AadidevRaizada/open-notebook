@@ -43,6 +43,13 @@ export const trTR = {
     usageTotal: "Toplam",
     lastActive: "Son etkin",
     recentActivity: "Son etkinlik",
+    organizationsTitle: "Kuruluşlar",
+    organizationsDesc: "İzole edilmiş içeriğini görüntülemek ve yönetmek için herhangi bir kuruluşa katılın. Etkin kuruluşu kenar çubuğundan değiştirin.",
+    organizationsEmpty: "Henüz kuruluş yok.",
+    membersCount: "{count} üye",
+    joinButton: "Katıl",
+    joinSuccess: "{org} kuruluşuna katıldınız",
+    joinError: "Kuruluşa katılınamadı",
     actions: {
       sourceCreated: "Kaynaklar",
       noteCreated: "Notlar",

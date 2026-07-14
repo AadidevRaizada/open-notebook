@@ -43,6 +43,13 @@ export const bnIN = {
     usageTotal: "মোট",
     lastActive: "সর্বশেষ সক্রিয়",
     recentActivity: "সাম্প্রতিক কার্যকলাপ",
+    organizationsTitle: "সংস্থা",
+    organizationsDesc: "কোনো সংস্থার বিচ্ছিন্ন কন্টেন্ট দেখতে ও পরিচালনা করতে সেটিতে যোগ দিন। সাইডবার থেকে সক্রিয় সংস্থা পরিবর্তন করুন।",
+    organizationsEmpty: "এখনও কোনো সংস্থা নেই।",
+    membersCount: "{count} জন সদস্য",
+    joinButton: "যোগ দিন",
+    joinSuccess: "{org}-এ যোগ দিয়েছেন",
+    joinError: "সংস্থায় যোগ দিতে ব্যর্থ হয়েছে",
     actions: {
       sourceCreated: "উৎস",
       noteCreated: "নোট",

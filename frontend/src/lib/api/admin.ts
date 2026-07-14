@@ -76,6 +76,13 @@ export const adminApi = {
   listOrganizations: async (): Promise<AdminOrganization[]> =>
     (await apiClient.get<AdminOrganization[]>('/admin/organizations')).data,
 
+  joinOrganization: async (organizationId: string): Promise<{ joined: boolean; organization_id: string }> =>
+    (
+      await apiClient.post<{ joined: boolean; organization_id: string }>(
+        `/admin/organizations/${organizationId}/join`
+      )
+    ).data,
+
   inviteUser: async ({ email, organizationName, organizationId }: InviteUserInput): Promise<AdminInvitation> =>
     (
       await apiClient.post<AdminInvitation>('/admin/invitations', {

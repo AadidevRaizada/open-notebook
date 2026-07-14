@@ -43,6 +43,13 @@ export const caES = {
     usageTotal: "Total",
     lastActive: "Última activitat",
     recentActivity: "Activitat recent",
+    organizationsTitle: "Organitzacions",
+    organizationsDesc: "Uneix-te a qualsevol organització per veure i gestionar el seu contingut aïllat. Canvia l'organització activa des de la barra lateral.",
+    organizationsEmpty: "Encara no hi ha organitzacions.",
+    membersCount: "{count} membres",
+    joinButton: "Uneix-te",
+    joinSuccess: "T'has unit a {org}",
+    joinError: "No s'ha pogut unir a l'organització",
     actions: {
       sourceCreated: "Fonts",
       noteCreated: "Notes",

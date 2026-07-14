@@ -1,5 +1,6 @@
 import { ClerkProvider } from '@clerk/nextjs'
 import { isClerkEnabled } from '@/lib/auth/clerk'
+import { OrgSwitchHandler } from '@/components/providers/OrgSwitchHandler'
 
 /**
  * Wraps children in ClerkProvider only when Clerk is configured.
@@ -10,5 +11,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   if (!isClerkEnabled) {
     return <>{children}</>
   }
-  return <ClerkProvider>{children}</ClerkProvider>
+  return (
+    <ClerkProvider>
+      <OrgSwitchHandler />
+      {children}
+    </ClerkProvider>
+  )
 }

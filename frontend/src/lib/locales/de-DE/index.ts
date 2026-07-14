@@ -46,6 +46,13 @@ export const deDE = {
     usageTotal: "Gesamt",
     lastActive: "Zuletzt aktiv",
     recentActivity: "Letzte Aktivität",
+    organizationsTitle: "Organisationen",
+    organizationsDesc: "Treten Sie einer Organisation bei, um ihre isolierten Inhalte anzuzeigen und zu verwalten. Wechseln Sie die aktive Organisation über die Seitenleiste.",
+    organizationsEmpty: "Noch keine Organisationen.",
+    membersCount: "{count} Mitglieder",
+    joinButton: "Beitreten",
+    joinSuccess: "{org} beigetreten",
+    joinError: "Beitritt zur Organisation fehlgeschlagen",
     actions: {
       sourceCreated: "Quellen",
       noteCreated: "Notizen",

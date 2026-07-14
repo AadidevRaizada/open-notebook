@@ -43,6 +43,13 @@ export const esES = {
     usageTotal: "Total",
     lastActive: "Última actividad",
     recentActivity: "Actividad reciente",
+    organizationsTitle: "Organizaciones",
+    organizationsDesc: "Únete a cualquier organización para ver y gestionar su contenido aislado. Cambia la organización activa desde la barra lateral.",
+    organizationsEmpty: "Aún no hay organizaciones.",
+    membersCount: "{count} miembros",
+    joinButton: "Unirse",
+    joinSuccess: "Te has unido a {org}",
+    joinError: "No se pudo unir a la organización",
     actions: {
       sourceCreated: "Fuentes",
       noteCreated: "Notas",

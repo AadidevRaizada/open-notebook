@@ -43,6 +43,13 @@ export const itIT = {
     usageTotal: "Totale",
     lastActive: "Ultima attività",
     recentActivity: "Attività recente",
+    organizationsTitle: "Organizzazioni",
+    organizationsDesc: "Unisciti a qualsiasi organizzazione per visualizzare e gestire i suoi contenuti isolati. Cambia l'organizzazione attiva dalla barra laterale.",
+    organizationsEmpty: "Ancora nessuna organizzazione.",
+    membersCount: "{count} membri",
+    joinButton: "Unisciti",
+    joinSuccess: "Ti sei unito a {org}",
+    joinError: "Impossibile unirsi all'organizzazione",
     actions: {
       sourceCreated: "Fonti",
       noteCreated: "Note",

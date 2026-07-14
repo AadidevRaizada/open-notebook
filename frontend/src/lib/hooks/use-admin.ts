@@ -93,6 +93,14 @@ export function useDeleteUser() {
   })
 }
 
+export function useJoinOrganization() {
+  const invalidate = useInvalidateAdmin()
+  return useMutation({
+    mutationFn: (organizationId: string) => adminApi.joinOrganization(organizationId),
+    onSuccess: invalidate,
+  })
+}
+
 function useClerkCurrentUserId(): string | null {
   const { user } = useUser()
   return user?.id ?? null

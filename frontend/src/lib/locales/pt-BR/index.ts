@@ -43,6 +43,13 @@ export const ptBR = {
     usageTotal: "Total",
     lastActive: "Última atividade",
     recentActivity: "Atividade recente",
+    organizationsTitle: "Organizações",
+    organizationsDesc: "Entre em qualquer organização para ver e gerenciar seu conteúdo isolado. Altere a organização ativa na barra lateral.",
+    organizationsEmpty: "Nenhuma organização ainda.",
+    membersCount: "{count} membros",
+    joinButton: "Entrar",
+    joinSuccess: "Você entrou em {org}",
+    joinError: "Falha ao entrar na organização",
     actions: {
       sourceCreated: "Fontes",
       noteCreated: "Notas",

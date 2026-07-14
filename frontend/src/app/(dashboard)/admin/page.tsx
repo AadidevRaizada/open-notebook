@@ -7,6 +7,7 @@ import { AxiosError } from 'axios'
 import {
   Ban,
   Loader2,
+  LogIn,
   MailPlus,
   MoreHorizontal,
   Shield,
@@ -56,6 +57,7 @@ import {
   useCurrentUserId,
   useDeleteUser,
   useInviteUser,
+  useJoinOrganization,
   useRevokeInvitation,
   useSetUserRole,
 } from '@/lib/hooks/use-admin'
@@ -161,6 +163,7 @@ function UsersTab() {
   const setUserRole = useSetUserRole()
   const banUser = useBanUser()
   const deleteUser = useDeleteUser()
+  const joinOrganization = useJoinOrganization()
 
   if (statusLoading) {
     return (
@@ -398,6 +401,55 @@ function UsersTab() {
                 </div>
               )
             })}
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-6 space-y-4">
+        <h2 className="text-lg font-semibold">{t('adminPage.organizationsTitle')}</h2>
+        <p className="text-xs text-muted-foreground">
+          {t('adminPage.organizationsDesc')}
+        </p>
+        {(organizations ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t('adminPage.organizationsEmpty')}</p>
+        ) : (
+          <div className="divide-y">
+            {(organizations ?? []).map((org) => (
+              <div key={org.id} className="flex items-center justify-between py-3 gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{org.name}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {t('adminPage.membersCount').replace(
+                      '{count}',
+                      String(org.members_count ?? 0)
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={joinOrganization.isPending}
+                  onClick={() =>
+                    joinOrganization.mutate(org.id, {
+                      onSuccess: () =>
+                        toast.success(
+                          t('adminPage.joinSuccess').replace('{org}', org.name)
+                        ),
+                      onError: (error) =>
+                        toast.error(errorDetail(error) ?? t('adminPage.joinError')),
+                    })
+                  }
+                >
+                  {joinOrganization.isPending &&
+                  joinOrganization.variables === org.id ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <LogIn className="h-4 w-4 mr-2" />
+                  )}
+                  {t('adminPage.joinButton')}
+                </Button>
+              </div>
+            ))}
           </div>
         )}
       </Card>

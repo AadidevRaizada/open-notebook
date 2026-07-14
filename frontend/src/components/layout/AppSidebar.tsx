@@ -9,6 +9,8 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useIsAdmin } from '@/lib/hooks/use-is-admin'
+import { isClerkEnabled } from '@/lib/auth/clerk'
+import { OrganizationSwitcher } from '@clerk/nextjs'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -323,6 +325,28 @@ export function AppSidebar() {
               isCollapsed ? 'items-center' : 'items-stretch'
             )}
           >
+            {/* Organization switcher (Clerk mode only). Admin can switch the
+                active org; content is isolated per org on the backend. */}
+            {isClerkEnabled && (
+              <div className={cn('flex', isCollapsed ? 'justify-center' : 'w-full')}>
+                <OrganizationSwitcher
+                  hidePersonal
+                  afterSelectOrganizationUrl="/notebooks"
+                  appearance={{
+                    elements: {
+                      rootBox: isCollapsed ? '' : 'w-full',
+                      organizationSwitcherTrigger: cn(
+                        'rounded-md border border-sidebar-border',
+                        isCollapsed
+                          ? 'justify-center px-1 py-1'
+                          : 'w-full justify-start gap-2 px-2 py-1.5'
+                      ),
+                      organizationPreviewTextContainer: isCollapsed ? 'hidden' : '',
+                    },
+                  }}
+                />
+              </div>
+            )}
             {isCollapsed ? (
               <>
                 <Tooltip>

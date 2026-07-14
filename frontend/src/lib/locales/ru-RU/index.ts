@@ -43,6 +43,13 @@ export const ruRU = {
     usageTotal: "Всего",
     lastActive: "Последняя активность",
     recentActivity: "Недавняя активность",
+    organizationsTitle: "Организации",
+    organizationsDesc: "Присоединитесь к любой организации, чтобы просматривать и управлять её изолированным содержимым. Активную организацию можно сменить на боковой панели.",
+    organizationsEmpty: "Пока нет организаций.",
+    membersCount: "Участников: {count}",
+    joinButton: "Присоединиться",
+    joinSuccess: "Вы присоединились к {org}",
+    joinError: "Не удалось присоединиться к организации",
     actions: {
       sourceCreated: "Источники",
       noteCreated: "Заметки",

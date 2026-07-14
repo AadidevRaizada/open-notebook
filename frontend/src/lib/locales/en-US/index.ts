@@ -43,6 +43,13 @@ export const enUS = {
     usageTotal: "Total",
     lastActive: "Last active",
     recentActivity: "Recent activity",
+    organizationsTitle: "Organizations",
+    organizationsDesc: "Join any organization to view and manage its isolated content. Switch the active organization from the sidebar.",
+    organizationsEmpty: "No organizations yet.",
+    membersCount: "{count} members",
+    joinButton: "Join",
+    joinSuccess: "Joined {org}",
+    joinError: "Failed to join organization",
     actions: {
       sourceCreated: "Sources",
       noteCreated: "Notes",
