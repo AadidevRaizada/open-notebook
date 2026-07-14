@@ -107,6 +107,16 @@ These were uncommitted before this session started; documented here so the diff 
 - **Operator steps after deploying this fix:** set `PUBLIC_APP_URL` on the Railway service (see §5 table), **revoke all pending invitations** in `/admin` (they permanently embed the old localhost redirect) and re-send them. Also set the Clerk application's Home URL to the deployed domain (Clerk Dashboard → NavCert → **Configure → Account Portal / Paths**) so any Account-Portal fallback also lands on production.
 - **Google sign-up for invitees:** from the ticketed invite link, email+password sign-up works directly; "Continue with Google" works only when the Google account's email exactly matches the invited address. Once the account exists, later *sign-ins* with Google link automatically by verified email.
 
+### 2.9 Organization-aware invites (2026-07-14, user request)
+
+- **Problem:** the Clerk instance has Organizations enabled with `force_organization_selection: true`, so every plain-invited user was forced to create their *own* organization at sign-up ("{first name}'s Organization").
+- **Fix:** the admin invite card now has two modes, both using Clerk **organization invitations** (which double as sign-up tickets, so restricted mode still works, and the invitee lands *inside* an org instead of creating one):
+  - **New organization** — admin enters an org name; the org is created and the invitee becomes its `org:admin`. If the invite fails, the just-created org is deleted (no orphans).
+  - **Existing organization** — admin picks an org from a dropdown; the invitee joins as `org:member`.
+- **Backend:** `api/clerk_client.py` gained organizations support (list/create/delete org, create/list/revoke org invitations); `api/routers/admin.py` gained `GET /admin/organizations`, org-mode handling in `POST /admin/invitations`, and org-aware revoke. The pending-invitations list now merges instance-level and per-org invitations (org name shown as a badge).
+- **Bug found live:** Clerk rejects body-less POSTs with "Content-Type is unsupported" — all body-less POST calls (revokes, ban/unban) now send an empty JSON body.
+- **Note:** the app itself has no per-organization data isolation — orgs are a Clerk-side grouping (all users still share the workspace). Dev-instance orgs cap at 5 members each.
+
 ---
 
 ## 3. Clerk: what is already configured (via Clerk CLI)

@@ -21,6 +21,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AlertDialog,
@@ -41,6 +48,7 @@ import {
 import type { AdminUser } from '@/lib/api/admin'
 import {
   useAdminInvitations,
+  useAdminOrganizations,
   useAdminStatus,
   useAdminUsage,
   useAdminUsers,
@@ -136,9 +144,13 @@ function UsersTab() {
   const userManagement = status?.user_management ?? false
   const { data: users, isLoading: usersLoading } = useAdminUsers(userManagement)
   const { data: invitations } = useAdminInvitations(userManagement)
+  const { data: organizations } = useAdminOrganizations(userManagement)
   const currentUserId = useCurrentUserId()
 
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteMode, setInviteMode] = useState<'newOrg' | 'existingOrg'>('newOrg')
+  const [inviteOrgName, setInviteOrgName] = useState('')
+  const [inviteOrgId, setInviteOrgId] = useState('')
   const [confirmAction, setConfirmAction] = useState<{
     type: 'delete' | 'ban'
     user: AdminUser
@@ -166,13 +178,22 @@ function UsersTab() {
     )
   }
 
+  const inviteReady =
+    inviteEmail.trim() !== '' &&
+    (inviteMode === 'newOrg' ? inviteOrgName.trim() !== '' : inviteOrgId !== '')
+
   const handleInvite = () => {
+    if (!inviteReady) return
     const email = inviteEmail.trim()
-    if (!email) return
-    inviteUser.mutate(email, {
+    const input =
+      inviteMode === 'newOrg'
+        ? { email, organizationName: inviteOrgName.trim() }
+        : { email, organizationId: inviteOrgId }
+    inviteUser.mutate(input, {
       onSuccess: () => {
         toast.success(t('adminPage.inviteSuccess').replace('{email}', email))
         setInviteEmail('')
+        setInviteOrgName('')
       },
       onError: (error) =>
         toast.error(errorDetail(error) ?? t('adminPage.inviteError')),
@@ -190,6 +211,27 @@ function UsersTab() {
       <Card className="p-6 space-y-3">
         <h2 className="text-lg font-semibold">{t('adminPage.inviteTitle')}</h2>
         <div className="flex gap-2">
+          <Button
+            variant={inviteMode === 'newOrg' ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setInviteMode('newOrg')}
+          >
+            {t('adminPage.inviteModeNewOrg')}
+          </Button>
+          <Button
+            variant={inviteMode === 'existingOrg' ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={() => setInviteMode('existingOrg')}
+          >
+            {t('adminPage.inviteModeExistingOrg')}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {inviteMode === 'newOrg'
+            ? t('adminPage.inviteModeNewOrgDesc')
+            : t('adminPage.inviteModeExistingOrgDesc')}
+        </p>
+        <div className="flex gap-2 flex-wrap">
           <Input
             type="email"
             placeholder={t('adminPage.invitePlaceholder')}
@@ -198,7 +240,29 @@ function UsersTab() {
             onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
             className="max-w-sm"
           />
-          <Button onClick={handleInvite} disabled={inviteUser.isPending || !inviteEmail.trim()}>
+          {inviteMode === 'newOrg' ? (
+            <Input
+              placeholder={t('adminPage.orgNamePlaceholder')}
+              value={inviteOrgName}
+              onChange={(e) => setInviteOrgName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+              className="max-w-xs"
+            />
+          ) : (
+            <Select value={inviteOrgId} onValueChange={setInviteOrgId}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder={t('adminPage.selectOrganization')} />
+              </SelectTrigger>
+              <SelectContent>
+                {(organizations ?? []).map((org) => (
+                  <SelectItem key={org.id} value={org.id}>
+                    {org.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button onClick={handleInvite} disabled={inviteUser.isPending || !inviteReady}>
             {inviteUser.isPending ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -213,18 +277,29 @@ function UsersTab() {
               {t('adminPage.pendingInvitations')}
             </h3>
             {invitations.map((invitation) => (
-              <div key={invitation.id} className="flex items-center justify-between text-sm">
-                <span>{invitation.email}</span>
+              <div key={invitation.id} className="flex items-center justify-between text-sm gap-2">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="truncate">{invitation.email}</span>
+                  {invitation.organization_name && (
+                    <Badge variant="outline">{invitation.organization_name}</Badge>
+                  )}
+                </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   disabled={revokeInvitation.isPending}
                   onClick={() =>
-                    revokeInvitation.mutate(invitation.id, {
-                      onSuccess: () => toast.success(t('adminPage.revokeSuccess')),
-                      onError: (error) =>
-                        toast.error(errorDetail(error) ?? t('adminPage.actionError')),
-                    })
+                    revokeInvitation.mutate(
+                      {
+                        invitationId: invitation.id,
+                        organizationId: invitation.organization_id,
+                      },
+                      {
+                        onSuccess: () => toast.success(t('adminPage.revokeSuccess')),
+                        onError: (error) =>
+                          toast.error(errorDetail(error) ?? t('adminPage.actionError')),
+                      }
+                    )
                   }
                 >
                   {t('adminPage.revoke')}

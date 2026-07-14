@@ -2,13 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useUser } from '@clerk/nextjs'
-import { adminApi } from '@/lib/api/admin'
+import { adminApi, type InviteUserInput } from '@/lib/api/admin'
 import { isClerkEnabled } from '@/lib/auth/clerk'
 
 export const ADMIN_QUERY_KEYS = {
   status: ['admin', 'status'] as const,
   users: ['admin', 'users'] as const,
   invitations: ['admin', 'invitations'] as const,
+  organizations: ['admin', 'organizations'] as const,
   usage: ['admin', 'usage'] as const,
 }
 
@@ -28,6 +29,14 @@ export function useAdminInvitations(enabled = true) {
   })
 }
 
+export function useAdminOrganizations(enabled = true) {
+  return useQuery({
+    queryKey: ADMIN_QUERY_KEYS.organizations,
+    queryFn: adminApi.listOrganizations,
+    enabled,
+  })
+}
+
 export function useAdminUsage() {
   return useQuery({ queryKey: ADMIN_QUERY_KEYS.usage, queryFn: adminApi.getUsage })
 }
@@ -37,13 +46,14 @@ function useInvalidateAdmin() {
   return () => {
     queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEYS.users })
     queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEYS.invitations })
+    queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEYS.organizations })
   }
 }
 
 export function useInviteUser() {
   const invalidate = useInvalidateAdmin()
   return useMutation({
-    mutationFn: (email: string) => adminApi.inviteUser(email),
+    mutationFn: (input: InviteUserInput) => adminApi.inviteUser(input),
     onSuccess: invalidate,
   })
 }
@@ -51,7 +61,8 @@ export function useInviteUser() {
 export function useRevokeInvitation() {
   const invalidate = useInvalidateAdmin()
   return useMutation({
-    mutationFn: (invitationId: string) => adminApi.revokeInvitation(invitationId),
+    mutationFn: ({ invitationId, organizationId }: { invitationId: string; organizationId?: string | null }) =>
+      adminApi.revokeInvitation(invitationId, organizationId),
     onSuccess: invalidate,
   })
 }

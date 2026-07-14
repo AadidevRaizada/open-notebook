@@ -112,8 +112,86 @@ async def list_invitations(status: str = "pending") -> List[Dict[str, Any]]:
 
 
 async def revoke_invitation(invitation_id: str) -> Dict[str, Any]:
-    invitation = await _request("POST", f"/invitations/{invitation_id}/revoke")
+    # json={} forces a Content-Type header; Clerk rejects body-less POSTs.
+    invitation = await _request("POST", f"/invitations/{invitation_id}/revoke", json={})
     return _slim_invitation(invitation)
+
+
+def _slim_organization(org: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": org.get("id"),
+        "name": org.get("name"),
+        "members_count": org.get("members_count"),
+        "created_at": org.get("created_at"),
+    }
+
+
+async def list_organizations(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    result = await _request(
+        "GET",
+        "/organizations",
+        params={"limit": limit, "offset": offset, "order_by": "-created_at", "include_members_count": "true"},
+    )
+    orgs = result.get("data", []) if isinstance(result, dict) else (result or [])
+    return [_slim_organization(o) for o in orgs]
+
+
+async def create_organization(name: str) -> Dict[str, Any]:
+    org = await _request("POST", "/organizations", json={"name": name})
+    return _slim_organization(org)
+
+
+async def delete_organization(organization_id: str) -> None:
+    await _request("DELETE", f"/organizations/{organization_id}")
+
+
+def _slim_org_invitation(invitation: Dict[str, Any], org_name: Optional[str] = None) -> Dict[str, Any]:
+    return {
+        "id": invitation.get("id"),
+        "email": invitation.get("email_address"),
+        "status": invitation.get("status"),
+        "created_at": invitation.get("created_at"),
+        "organization_id": invitation.get("organization_id"),
+        "organization_name": org_name,
+        "role": invitation.get("role"),
+    }
+
+
+async def create_org_invitation(
+    organization_id: str,
+    email: str,
+    role: str = "org:member",
+    redirect_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    # An organization invitation doubles as a sign-up ticket, so it works with
+    # restricted sign-up mode and satisfies force_organization_selection —
+    # the invitee lands inside the org instead of being pushed to create one.
+    body: Dict[str, Any] = {"email_address": email, "role": role}
+    if redirect_url:
+        body["redirect_url"] = redirect_url
+    invitation = await _request(
+        "POST", f"/organizations/{organization_id}/invitations", json=body
+    )
+    return _slim_org_invitation(invitation)
+
+
+async def list_org_invitations(
+    organization_id: str, org_name: Optional[str] = None, status: str = "pending"
+) -> List[Dict[str, Any]]:
+    result = await _request(
+        "GET",
+        f"/organizations/{organization_id}/invitations",
+        params={"status": status},
+    )
+    invitations = result.get("data", []) if isinstance(result, dict) else (result or [])
+    return [_slim_org_invitation(i, org_name) for i in invitations]
+
+
+async def revoke_org_invitation(organization_id: str, invitation_id: str) -> Dict[str, Any]:
+    invitation = await _request(
+        "POST", f"/organizations/{organization_id}/invitations/{invitation_id}/revoke", json={}
+    )
+    return _slim_org_invitation(invitation)
 
 
 async def set_user_role(user_id: str, role: Optional[str]) -> Dict[str, Any]:
@@ -125,11 +203,11 @@ async def set_user_role(user_id: str, role: Optional[str]) -> Dict[str, Any]:
 
 
 async def ban_user(user_id: str) -> Dict[str, Any]:
-    return _slim_user(await _request("POST", f"/users/{user_id}/ban"))
+    return _slim_user(await _request("POST", f"/users/{user_id}/ban", json={}))
 
 
 async def unban_user(user_id: str) -> Dict[str, Any]:
-    return _slim_user(await _request("POST", f"/users/{user_id}/unban"))
+    return _slim_user(await _request("POST", f"/users/{user_id}/unban", json={}))
 
 
 async def delete_user(user_id: str) -> None:

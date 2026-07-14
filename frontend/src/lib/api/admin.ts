@@ -17,6 +17,25 @@ export interface AdminInvitation {
   email: string
   status: string
   created_at: number | null
+  // Present on organization invitations only.
+  organization_id?: string | null
+  organization_name?: string | null
+  role?: string | null
+}
+
+export interface AdminOrganization {
+  id: string
+  name: string
+  members_count: number | null
+  created_at: number | null
+}
+
+// Exactly one of organizationName (create a new org, invitee becomes its
+// admin) or organizationId (join an existing org as member) should be set.
+export interface InviteUserInput {
+  email: string
+  organizationName?: string
+  organizationId?: string
 }
 
 export interface AdminStatus {
@@ -54,16 +73,25 @@ export const adminApi = {
   listInvitations: async (): Promise<AdminInvitation[]> =>
     (await apiClient.get<AdminInvitation[]>('/admin/invitations')).data,
 
-  inviteUser: async (email: string): Promise<AdminInvitation> =>
+  listOrganizations: async (): Promise<AdminOrganization[]> =>
+    (await apiClient.get<AdminOrganization[]>('/admin/organizations')).data,
+
+  inviteUser: async ({ email, organizationName, organizationId }: InviteUserInput): Promise<AdminInvitation> =>
     (
       await apiClient.post<AdminInvitation>('/admin/invitations', {
         email,
         redirect_url: `${window.location.origin}/sign-up`,
+        organization_name: organizationName || undefined,
+        organization_id: organizationId || undefined,
       })
     ).data,
 
-  revokeInvitation: async (invitationId: string): Promise<AdminInvitation> =>
-    (await apiClient.post<AdminInvitation>(`/admin/invitations/${invitationId}/revoke`)).data,
+  revokeInvitation: async (invitationId: string, organizationId?: string | null): Promise<AdminInvitation> =>
+    (
+      await apiClient.post<AdminInvitation>(`/admin/invitations/${invitationId}/revoke`, undefined, {
+        params: organizationId ? { organization_id: organizationId } : undefined,
+      })
+    ).data,
 
   setUserRole: async (userId: string, role: 'admin' | null): Promise<AdminUser> =>
     (await apiClient.patch<AdminUser>(`/admin/users/${userId}/role`, { role })).data,

@@ -28,6 +28,12 @@ class InviteRequest(BaseModel):
     # Overridden by PUBLIC_APP_URL when set, so invites sent from a localhost
     # admin session still point at the deployed app.
     redirect_url: Optional[str] = None
+    # Exactly one of these selects the invite mode (Clerk forces every user
+    # into an organization, so plain invites push invitees to create their own):
+    # organization_name -> create a fresh org and invite the user as its org:admin
+    # organization_id   -> invite the user into that existing org as org:member
+    organization_name: Optional[str] = None
+    organization_id: Optional[str] = None
 
 
 def _invite_redirect_url(requested: Optional[str]) -> Optional[str]:
@@ -64,22 +70,76 @@ async def list_users() -> List[Dict[str, Any]]:
     return await clerk_client.list_users()
 
 
+@router.get("/admin/organizations")
+async def list_organizations() -> List[Dict[str, Any]]:
+    return await clerk_client.list_organizations()
+
+
 @router.get("/admin/invitations")
 async def list_invitations() -> List[Dict[str, Any]]:
-    return await clerk_client.list_invitations(status="pending")
+    # Instance-level invites plus pending invites of every organization,
+    # so the admin sees one combined pending list.
+    invitations = await clerk_client.list_invitations(status="pending")
+    for org in await clerk_client.list_organizations():
+        invitations.extend(
+            await clerk_client.list_org_invitations(org["id"], org_name=org["name"])
+        )
+    invitations.sort(key=lambda i: i.get("created_at") or 0, reverse=True)
+    return invitations
 
 
 @router.post("/admin/invitations")
 async def invite_user(payload: InviteRequest) -> Dict[str, Any]:
+    if payload.organization_name and payload.organization_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either organization_name or organization_id, not both",
+        )
+    redirect_url = _invite_redirect_url(payload.redirect_url)
+
+    if payload.organization_name:
+        name = payload.organization_name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Organization name cannot be empty")
+        org = await clerk_client.create_organization(name)
+        try:
+            invitation = await clerk_client.create_org_invitation(
+                org["id"], email=payload.email, role="org:admin", redirect_url=redirect_url
+            )
+        except HTTPException:
+            # Don't leave an empty orphan org behind if the invite failed.
+            try:
+                await clerk_client.delete_organization(org["id"])
+            except HTTPException:
+                logger.warning(f"Could not clean up organization {org['id']} after failed invite")
+            raise
+        invitation["organization_name"] = org["name"]
+        logger.info(f"Admin invited {payload.email} as admin of new org '{org['name']}'")
+        return invitation
+
+    if payload.organization_id:
+        invitation = await clerk_client.create_org_invitation(
+            payload.organization_id,
+            email=payload.email,
+            role="org:member",
+            redirect_url=redirect_url,
+        )
+        logger.info(f"Admin invited {payload.email} into org {payload.organization_id}")
+        return invitation
+
     invitation = await clerk_client.create_invitation(
-        email=payload.email, redirect_url=_invite_redirect_url(payload.redirect_url)
+        email=payload.email, redirect_url=redirect_url
     )
     logger.info(f"Admin invited {payload.email}")
     return invitation
 
 
 @router.post("/admin/invitations/{invitation_id}/revoke")
-async def revoke_invitation(invitation_id: str) -> Dict[str, Any]:
+async def revoke_invitation(
+    invitation_id: str, organization_id: Optional[str] = None
+) -> Dict[str, Any]:
+    if organization_id:
+        return await clerk_client.revoke_org_invitation(organization_id, invitation_id)
     return await clerk_client.revoke_invitation(invitation_id)
 
 
