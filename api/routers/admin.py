@@ -7,6 +7,7 @@ password/none auth mode they return 400 while the usage endpoints still work
 (events are attributed to "local").
 """
 
+import os
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -24,7 +25,16 @@ class InviteRequest(BaseModel):
     email: EmailStr
     # Where the invite link lands (the app's /sign-up page); sent by the
     # frontend from window.location.origin so it works locally and deployed.
+    # Overridden by PUBLIC_APP_URL when set, so invites sent from a localhost
+    # admin session still point at the deployed app.
     redirect_url: Optional[str] = None
+
+
+def _invite_redirect_url(requested: Optional[str]) -> Optional[str]:
+    public_url = os.environ.get("PUBLIC_APP_URL", "").strip().rstrip("/")
+    if public_url:
+        return f"{public_url}/sign-up"
+    return requested
 
 
 class RoleRequest(BaseModel):
@@ -62,7 +72,7 @@ async def list_invitations() -> List[Dict[str, Any]]:
 @router.post("/admin/invitations")
 async def invite_user(payload: InviteRequest) -> Dict[str, Any]:
     invitation = await clerk_client.create_invitation(
-        email=payload.email, redirect_url=payload.redirect_url
+        email=payload.email, redirect_url=_invite_redirect_url(payload.redirect_url)
     )
     logger.info(f"Admin invited {payload.email}")
     return invitation

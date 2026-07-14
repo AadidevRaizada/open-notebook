@@ -1,4 +1,5 @@
 import apiClient from './client'
+import { getClerkToken, isClerkEnabled } from '@/lib/auth/clerk'
 import {
   SourceChatSession,
   SourceChatSessionWithMessages,
@@ -46,19 +47,24 @@ export const sourceChatApi = {
   },
 
   // Messaging with streaming
-  sendMessage: (sourceId: string, sessionId: string, data: SendMessageRequest) => {
-    // Get auth token using the same logic as apiClient interceptor
-    let token = null
+  sendMessage: async (sourceId: string, sessionId: string, data: SendMessageRequest) => {
+    // Get auth token using the SAME logic as the apiClient interceptor:
+    // Clerk session JWT when Clerk is enabled, else legacy password-mode storage.
+    let token: string | null = null
     if (typeof window !== 'undefined') {
-      const authStorage = localStorage.getItem('auth-storage')
-      if (authStorage) {
-        try {
-          const { state } = JSON.parse(authStorage)
-          if (state?.token) {
-            token = state.token
+      if (isClerkEnabled) {
+        token = await getClerkToken()
+      } else {
+        const authStorage = localStorage.getItem('auth-storage')
+        if (authStorage) {
+          try {
+            const { state } = JSON.parse(authStorage)
+            if (state?.token) {
+              token = state.token
+            }
+          } catch (error) {
+            console.error('Error parsing auth storage:', error)
           }
-        } catch (error) {
-          console.error('Error parsing auth storage:', error)
         }
       }
     }

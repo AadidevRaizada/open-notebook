@@ -100,6 +100,13 @@ These were uncommitted before this session started; documented here so the diff 
 - `lib/config.ts` / `lib/types/config.ts` no longer carry `latestVersion`/`hasUpdate`; 7 orphaned `advanced.*` i18n keys removed from all 14 locales (locale tests pass).
 - Reason: this is a branded internal deployment ("IRS Knowledge base"); upstream Open Notebook release notices are irrelevant noise for its users.
 
+### 2.8 Invite links pinned to the deployed URL (2026-07-14, deployment fix)
+
+- **Problem:** invite emails redirected users to `http://localhost:3000` instead of the Railway app. Cause: the admin panel sends `redirect_url = window.location.origin + '/sign-up'`, so invites created from a localhost admin session baked localhost into the Clerk invitation. Because Clerk sign-ups are **restricted** (invite-only), a user who then manually opened the production `/sign-up` had no invitation ticket (`__clerk_ticket`) in the URL — Clerk therefore blocked every sign-up method, including "Continue with Google".
+- **Fix:** `api/routers/admin.py` now honors a `PUBLIC_APP_URL` env var: when set, every invitation's redirect becomes `{PUBLIC_APP_URL}/sign-up` regardless of which origin the admin was browsing from. Unset (local dev), the browser origin is used as before.
+- **Operator steps after deploying this fix:** set `PUBLIC_APP_URL` on the Railway service (see §5 table), **revoke all pending invitations** in `/admin` (they permanently embed the old localhost redirect) and re-send them. Also set the Clerk application's Home URL to the deployed domain (Clerk Dashboard → NavCert → **Configure → Account Portal / Paths**) so any Account-Portal fallback also lands on production.
+- **Google sign-up for invitees:** from the ticketed invite link, email+password sign-up works directly; "Continue with Google" works only when the Google account's email exactly matches the invited address. Once the account exists, later *sign-ins* with Google link automatically by verified email.
+
 ---
 
 ## 3. Clerk: what is already configured (via Clerk CLI)
@@ -144,6 +151,8 @@ Remove/blank `CLERK_ISSUER` in `.env` and the two Clerk keys in `frontend/.env.l
 
 > Railway has no permanent free tier (~$5 one-time trial credit, then Hobby ≈ $5/mo). Clerk stays free at this scale.
 
+> **Persistence requires volumes + Hobby plan.** Without a volume on the `surrealdb` service, *every* redeploy/restart of that service wipes all data (models config, credentials, notebooks, users' notes). Trial-plan volumes are capped at 0.5 GB and are **deleted 30 days after the trial credit expires**, so upgrade to Hobby (5 GB volumes, no expiry) before relying on it. Also keep `OPEN_NOTEBOOK_ENCRYPTION_KEY` stable forever — changing it makes stored provider API keys undecryptable.
+
 ### Service 1 — `surrealdb`
 - **Deploy from Docker image:** `surrealdb/surrealdb:v2`
 - **Start command:** `surreal start --log info --user $SURREAL_USER --pass $SURREAL_PASSWORD rocksdb:/mydata/mydatabase.db`
@@ -168,6 +177,7 @@ Remove/blank `CLERK_ISSUER` in `.env` and the two Clerk keys in `frontend/.env.l
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key. **NEXT_PUBLIC_ vars are inlined at build time** — the root `Dockerfile` now declares this (and the sign-in/up URL vars) as `ARG`, so setting it as a Railway service variable makes Railway pass it into the build automatically. Without it the frontend ships with Clerk disabled. |
 | `CLERK_SECRET_KEY` | Clerk secret (server SDK) |
 | `CLERK_ISSUER` | your Clerk instance issuer URL |
+| `PUBLIC_APP_URL` | `https://<your-railway-domain>` — pins invite-email redirects to the deployed app even when invites are sent from a localhost admin session (§2.8). |
 | *(leave `OPEN_NOTEBOOK_PASSWORD` unset)* | password mode off in clerk mode |
 
 ### Clerk production notes
