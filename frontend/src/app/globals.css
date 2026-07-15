@@ -231,3 +231,9 @@
   color: var(--foreground) !important;
   background-color: var(--accent) !important;
 }
+/* Phones: the switcher shrinks to its logo so the header row never crowds. */
+@media (max-width: 639px) {
+  .cl-organizationSwitcherTrigger .cl-organizationPreviewTextContainer {
+    display: none;
+  }
+}

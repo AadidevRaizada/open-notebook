@@ -6,21 +6,26 @@ import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import {
-  ArrowRight,
   Book,
   Check,
   CloudUpload,
   FileText,
   FolderPlus,
   Library,
+  Lock,
   MessageCircleQuestion,
   UserPlus,
 } from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { PromptInput } from '@/components/ui/ai-chat-input'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { sourcesApi } from '@/lib/api/sources'
 import { useTranslation } from '@/lib/hooks/use-translation'
@@ -64,14 +69,19 @@ function HomeContent() {
   const { t, language } = useTranslation()
   const router = useRouter()
   const greeting = useGreeting()
-  const { name } = useCurrentUser()
-  // useCurrentUser falls back to the email address when the account has no
-  // name set — greet those users generically rather than by their email.
-  const firstName = name && !name.includes('@') ? name.split(/\s+/)[0] : null
+  const { name, email } = useCurrentUser()
+  // Prefer a real full name; otherwise derive a friendly first name from the
+  // email local-part so the greeting is always personal.
+  const firstName = useMemo(() => {
+    const raw = name && !name.includes('@') ? name : email
+    if (!raw) return null
+    const token = raw.split('@')[0].split(/[\s._-]+/).filter(Boolean)[0]
+    if (!token) return null
+    return token.charAt(0).toUpperCase() + token.slice(1)
+  }, [name, email])
   const { isAdmin } = useIsAdmin()
   const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
 
-  const [question, setQuestion] = useState('')
   const { hasSources, isLoading: sourcesChecking } = useHasAnySources()
   const { data: notebooks } = useNotebooks(false)
 
@@ -127,101 +137,92 @@ function HomeContent() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl space-y-10">
-          {/* Greeting — quiet; the ask box below is the page's one priority */}
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-              {firstName ? `${greeting}, ${firstName}.` : `${greeting}.`}
+      {/* ── Above the fold ──────────────────────────────────────────────
+          One priority only: the ask box. Everything is centered in a near-
+          empty field so the purpose reads in a glance — "I ask questions
+          here." Supporting features live below, discovered on scroll. */}
+      <section
+        aria-label={t('homePage.askLabel')}
+        className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center px-4 py-16 sm:px-6"
+      >
+        <div className="w-full max-w-2xl">
+          {/* Greeting — warm, human, minimal */}
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              {firstName ? `${greeting}, ${firstName}` : greeting}
             </h1>
-            <p className="mt-1 text-base text-muted-foreground">
+            <p className="mt-3 text-base text-muted-foreground sm:text-lg">
               {t('homePage.welcomeSubtitle')}
             </p>
           </div>
 
-          {/* Ask IRClass Navigator — THE primary action */}
-          <section aria-label={t('homePage.askLabel')}>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                ask(question)
-              }}
-              className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5"
-            >
-              <label
-                htmlFor="home-ask-input"
-                className="mb-3 block text-sm font-medium text-foreground"
+          {/* THE primary action — the dominant, self-expanding ask box */}
+          <div className="flex justify-center">
+            <PromptInput
+              onSubmit={ask}
+              onAttach={openSourceDialog}
+              placeholder={t('homePage.askPlaceholder')}
+              ariaLabel={t('homePage.askLabel')}
+              submitLabel={t('homePage.askButton')}
+              attachLabel={t('homePage.actionUploadTitle')}
+              collapsedWidth={480}
+              expandedWidth={672}
+              alwaysExpanded
+            />
+          </div>
+
+          {/* Example prompts — quiet suggestions beneath the box */}
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {EXAMPLE_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => ask(t(key))}
+                className="rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {t('homePage.askLabel')}
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="home-ask-input"
-                  autoFocus
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  placeholder={t('homePage.askPlaceholder')}
-                  className="h-12 flex-1 border-border bg-background text-base shadow-none focus-visible:ring-2"
-                  autoComplete="off"
-                />
-                <Button
-                  type="submit"
-                  size="lg"
-                  disabled={!question.trim()}
-                  className="h-12 w-12 shrink-0 p-0"
-                  aria-label={t('homePage.askButton')}
-                >
-                  <ArrowRight className="h-5 w-5" />
-                </Button>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {EXAMPLE_KEYS.map((key) => (
-                  <Button
-                    key={key}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-full font-normal text-muted-foreground hover:text-foreground"
-                    onClick={() => ask(t(key))}
-                  >
-                    {t(key)}
-                  </Button>
+                {t(key)}
+              </button>
+            ))}
+          </div>
+
+          {/* Privacy reassurance — small, quiet, present */}
+          <p className="mt-5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="h-3.5 w-3.5" />
+            {t('homePage.securePrivate')}
+          </p>
+        </div>
+      </section>
+
+      {/* ── Below the fold ──────────────────────────────────────────────
+          Secondary functionality, revealed only on scroll. */}
+      <div className="px-4 pb-16 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-4xl space-y-12">
+          {/* Quick actions — icon-only, tooltip on hover, no labels */}
+          <TooltipProvider delayDuration={200}>
+            <section aria-label={t('homePage.getStarted')}>
+              <h2 className="mb-4 text-center text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                {t('homePage.getStarted')}
+              </h2>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {quickActions.map((action) => (
+                  <Tooltip key={action.key}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={action.onClick}
+                        aria-label={action.title}
+                        className="card-hover flex h-14 w-14 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <action.icon className="h-5 w-5" />
+                        <span className="sr-only">{action.desc}</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">{action.title}</TooltipContent>
+                  </Tooltip>
                 ))}
               </div>
-            </form>
-          </section>
-
-          {/* Quick actions — secondary weight */}
-          <section aria-label={t('homePage.getStarted')} className="space-y-3">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              {t('homePage.getStarted')}
-            </h2>
-            <div
-              className={cn(
-                'grid gap-3 sm:grid-cols-2',
-                isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-3'
-              )}
-            >
-              {quickActions.map((action) => (
-                <button
-                  key={action.key}
-                  type="button"
-                  onClick={action.onClick}
-                  className="card-hover flex min-h-[44px] items-center gap-3 rounded-lg border border-border bg-card p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
-                    <action.icon className="h-5 w-5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">{action.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {action.desc}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+            </section>
+          </TooltipProvider>
 
           {isAdmin && <AdminStatStrip />}
 
@@ -269,7 +270,7 @@ function AdminStatStrip() {
   if (stats.length === 0) return null
 
   return (
-    <div className="flex flex-wrap items-center gap-x-8 gap-y-2 border-y border-border py-3 text-sm">
+    <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-2 border-y border-border py-3 text-sm">
       {stats.map((stat) => (
         <div key={stat.label} className="flex items-baseline gap-2">
           <span className="font-semibold tabular-nums text-foreground">{stat.value}</span>
@@ -318,7 +319,7 @@ function RecentWork({ notebooks, language }: RecentWorkProps) {
   }
 
   return (
-    <section className="grid gap-6 md:grid-cols-3">
+    <section className="grid gap-8 md:grid-cols-3">
       {/* Recent workspaces */}
       <RecentColumn
         title={t('homePage.recentWorkspaces')}
@@ -350,7 +351,7 @@ function RecentWork({ notebooks, language }: RecentWorkProps) {
         {questions.slice(0, 5).map((item) => (
           <RecentRow
             key={item.ts}
-            href={`/search?q=${encodeURIComponent(item.q)}`}
+            href={item.a ? `/search?a=${item.ts}` : `/search?q=${encodeURIComponent(item.q)}`}
             icon={MessageCircleQuestion}
             title={item.q}
             meta={relative(item.ts) ?? undefined}
@@ -480,7 +481,7 @@ function FirstRunWizard({ hasWorkspace, onUpload, onCreateWorkspace }: FirstRunW
   ]
 
   return (
-    <Card className="p-5 sm:p-6">
+    <Card className="mx-auto max-w-2xl p-5 sm:p-6">
       <h2 className="text-base font-semibold">{t('homePage.wizardTitle')}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{t('homePage.wizardSubtitle')}</p>
       <ol className="mt-4 space-y-1">

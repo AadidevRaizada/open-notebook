@@ -1,22 +1,38 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import {
+  AlertCircle,
+  ArrowUp,
+  Copy,
+  Check,
+  FileText,
+  Lightbulb,
+  Paperclip,
+  RefreshCw,
+  Save,
+  Settings2,
+  Compass,
+  StickyNote,
+} from 'lucide-react'
+import { toast } from 'sonner'
+
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
-import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Card, CardContent } from '@/components/ui/card'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
-  ChevronDown,
-  AlertCircle,
-  Settings2,
-  Save,
-  ArrowUp,
-  FileText,
-} from 'lucide-react'
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
+import { LoadingSpinner } from '@/components/common/LoadingSpinner'
+import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
+import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
+import { convertReferencesToCompactMarkdown, type ReferenceType } from '@/lib/utils/source-references'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
 import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
@@ -24,11 +40,14 @@ import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import { useHasAnySources } from '@/lib/hooks/use-sources'
 import { useIsAdmin } from '@/lib/hooks/use-is-admin'
-import { recordRecentQuestion } from '@/lib/utils/recent-questions'
-import { LoadingSpinner } from '@/components/common/LoadingSpinner'
-import { StreamingResponse } from '@/components/search/StreamingResponse'
-import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
-import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
+import { useCurrentUser, useUserAvatar } from '@/lib/hooks/use-current-user'
+import {
+  recordRecentQuestion,
+  recordRecentAnswer,
+  getRecentQuestionById,
+  type StoredSource,
+} from '@/lib/utils/recent-questions'
+import { cn } from '@/lib/utils'
 
 // Full key paths so i18n static analysis (locales/index.test.ts) can see them
 const EXAMPLE_PROMPTS = [
@@ -38,17 +57,43 @@ const EXAMPLE_PROMPTS = [
   { key: 'searchPage.examplePrompts.processExplainer' },
 ] as const
 
+interface Turn {
+  id: number
+  question: string
+  answer: string
+  /** True when AI answers are unavailable — the turn shows the notice instead. */
+  noAi?: boolean
+}
+
 export default function SearchPage() {
+  return (
+    <AppShell>
+      <SearchConversation />
+    </AppShell>
+  )
+}
+
+function SearchConversation() {
   const { t } = useTranslation()
   const searchParams = useSearchParams()
   const urlQuery = searchParams?.get('q') || ''
-  // Old deep links with ?mode=search still work (list only, no answer),
-  // but no UI exposes the mode anymore — typing is enough.
+  const urlAnswerId = searchParams?.get('a') || ''
+  // Old deep links with ?mode=search still work (list only, no answer).
   const urlSearchOnly = searchParams?.get('mode') === 'search'
 
-  const [question, setQuestion] = useState(urlQuery)
+  const [question, setQuestion] = useState('')
   const [includeNotes, setIncludeNotes] = useState(true)
-  const [searchOnly, setSearchOnly] = useState(urlSearchOnly)
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [activeQuestion, setActiveQuestion] = useState<string | null>(null)
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [saveTurn, setSaveTurn] = useState<Turn | null>(null)
+
+  // Sources panel content — decoupled from the live search so a replayed
+  // (stored) answer can show its own saved provenance.
+  const [panelSources, setPanelSources] = useState<StoredSource[] | null>(null)
+  const [lastQuery, setLastQuery] = useState('')
+  const panelSourcesRef = useRef<StoredSource[] | null>(null)
+  panelSourcesRef.current = panelSources
 
   // Advanced models dialog (admin only)
   const [showAdvancedModels, setShowAdvancedModels] = useState(false)
@@ -58,22 +103,29 @@ export default function SearchPage() {
     finalAnswer: string
   } | null>(null)
 
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
-  const [submittedQuestion, setSubmittedQuestion] = useState('')
-
   const searchMutation = useSearch()
   const ask = useAsk()
+  const { isStreaming, finalAnswer, answers, error: askError, reset: resetAsk } = ask
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
   const { data: availableModels } = useModels()
   const { openModal } = useModalManager()
   const { openSourceDialog } = useCreateDialogs()
   const { hasSources, isLoading: sourcesLoading } = useHasAnySources()
   const { isAdmin } = useIsAdmin()
+  const { name } = useCurrentUser()
+  const userAvatar = useUserAvatar()
+
+  const initials = useMemo(() => {
+    if (!name || name.includes('@')) return 'U'
+    return name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() ?? '')
+      .join('')
+  }, [name])
 
   const modelNameById = useMemo(() => {
-    if (!availableModels) {
-      return new Map<string, string>()
-    }
+    if (!availableModels) return new Map<string, string>()
     return new Map(availableModels.map((model) => [model.id, model.name]))
   }, [availableModels])
 
@@ -86,22 +138,25 @@ export default function SearchPage() {
   // The answer stream needs both a chat model and retrieval (embeddings).
   const canAsk = !!modelDefaults?.default_chat_model && hasEmbeddingModel
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Typewriter placeholder — cycles the generic prompt + example questions.
+  const placeholderPhrases = useMemo(
+    () => [t('searchPage.unifiedPlaceholder'), ...EXAMPLE_PROMPTS.map((p) => t(p.key))],
+    [t]
+  )
+  const typedPlaceholder = useTypewriterPlaceholder(placeholderPhrases, question.length === 0)
 
-  // Track auto-triggering from URL params
   const hasAutoTriggeredRef = useRef(false)
-  const lastUrlParamsRef = useRef({ q: '', searchOnly: false })
 
   const runQuery = useCallback(
-    (rawQuestion: string, options?: { searchOnly?: boolean }) => {
+    (rawQuestion: string) => {
       const q = rawQuestion.trim()
-      if (!q || modelsLoading) return
+      if (!q || modelsLoading || isStreaming) return
 
-      const listOnly = options?.searchOnly ?? false
-      setSubmittedQuestion(q)
+      setActiveQuestion(q)
+      setQuestion('')
+      setLastQuery(q)
       recordRecentQuestion(q)
 
-      // Matching knowledge list — the system picks the retrieval strategy.
       searchMutation.mutate({
         query: q,
         type: hasEmbeddingModel ? 'vector' : 'text',
@@ -111,296 +166,649 @@ export default function SearchPage() {
         minimum_score: 0.2,
       })
 
-      // Answer stream in parallel, when AI is configured.
-      if (!listOnly && canAsk && modelDefaults?.default_chat_model) {
+      if (canAsk && modelDefaults?.default_chat_model) {
         const models = customModels || {
           strategy: modelDefaults.default_chat_model,
           answer: modelDefaults.default_chat_model,
           finalAnswer: modelDefaults.default_chat_model,
         }
         ask.sendAsk(q, models)
+      } else {
+        setTurns((prev) => [...prev, { id: Date.now(), question: q, answer: '', noAi: true }])
+        setActiveQuestion(null)
       }
     },
-    [modelsLoading, hasEmbeddingModel, includeNotes, canAsk, modelDefaults, customModels, ask, searchMutation]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modelsLoading, isStreaming, hasEmbeddingModel, includeNotes, canAsk, modelDefaults, customModels]
+  )
+
+  // Keep the Sources panel in sync with the latest live search.
+  useEffect(() => {
+    if (searchMutation.data) {
+      setPanelSources(
+        searchMutation.data.results.map((r) => ({
+          title: r.title,
+          parent_id: r.parent_id,
+          matches: r.matches,
+        }))
+      )
+    }
+  }, [searchMutation.data])
+
+  // Commit the active exchange once the answer stream completes, and persist
+  // the answer so it can be re-opened later without re-querying.
+  useEffect(() => {
+    if (activeQuestion && !isStreaming && finalAnswer !== null) {
+      const q = activeQuestion
+      const a = finalAnswer
+      const sources = panelSourcesRef.current ?? undefined
+      setTurns((prev) => [...prev, { id: Date.now(), question: q, answer: a }])
+      recordRecentAnswer(q, a, sources)
+      setActiveQuestion(null)
+      resetAsk()
+    }
+  }, [isStreaming, finalAnswer, activeQuestion, resetAsk])
+
+  // Replay a stored answer when arriving with ?a=<ts> — no re-query.
+  useEffect(() => {
+    if (hasAutoTriggeredRef.current || !urlAnswerId) return
+    const ts = Number(urlAnswerId)
+    const stored = Number.isFinite(ts) ? getRecentQuestionById(ts) : undefined
+    if (stored?.a) {
+      hasAutoTriggeredRef.current = true
+      setTurns([{ id: stored.ts, question: stored.q, answer: stored.a }])
+      setPanelSources(stored.sources ?? [])
+      setLastQuery(stored.q)
+    }
+  }, [urlAnswerId])
+
+  // Auto-trigger a fresh ask when arriving with ?q=… (unless replaying stored).
+  useEffect(() => {
+    if (hasAutoTriggeredRef.current || !urlQuery || modelsLoading || urlSearchOnly) return
+    hasAutoTriggeredRef.current = true
+    runQuery(urlQuery)
+  }, [urlQuery, urlSearchOnly, modelsLoading, runQuery])
+
+  // Keep the conversation scrolled to the newest message.
+  const bottomRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [turns.length, activeQuestion, answers.length, finalAnswer])
+
+  const handleReferenceClick = useCallback(
+    (type: string, id: string) => {
+      const modalType = type === 'source_insight' ? 'insight' : (type as 'source' | 'note' | 'insight')
+      openModal(modalType, id)
+    },
+    [openModal]
   )
 
   const handleSubmit = useCallback(() => {
-    if (ask.isStreaming || !question.trim()) return
-    setSearchOnly(false)
+    if (!question.trim()) return
     runQuery(question)
-  }, [ask.isStreaming, question, runQuery])
+  }, [question, runQuery])
 
-  // Auto-trigger when arriving with URL params (?q=...&mode=search honored)
-  useEffect(() => {
-    if (hasAutoTriggeredRef.current || !urlQuery || modelsLoading) return
-    hasAutoTriggeredRef.current = true
-    runQuery(urlQuery, { searchOnly: urlSearchOnly })
-  }, [urlQuery, urlSearchOnly, modelsLoading, runQuery])
-
-  // Handle URL param changes while on the page (e.g., command palette again)
-  useEffect(() => {
-    const currentQ = searchParams?.get('q') || ''
-    const currentSearchOnly = searchParams?.get('mode') === 'search'
-
-    if (
-      currentQ !== lastUrlParamsRef.current.q ||
-      currentSearchOnly !== lastUrlParamsRef.current.searchOnly
-    ) {
-      lastUrlParamsRef.current = { q: currentQ, searchOnly: currentSearchOnly }
-      if (currentQ) {
-        setQuestion(currentQ)
-        setSearchOnly(currentSearchOnly)
-        hasAutoTriggeredRef.current = false
-      }
-    }
-  }, [searchParams])
-
-  const hasAskResult = ask.isStreaming || ask.finalAnswer || ask.answers.length > 0
-  const hasSearchResult = !!searchMutation.data
-  const showEmptyState = !hasAskResult && !hasSearchResult && !searchMutation.isPending
-
-  const handlePromptClick = (text: string) => {
-    setQuestion(text)
-    textareaRef.current?.focus()
+  const openSaveDialog = (turn: Turn) => {
+    setSaveTurn(turn)
+    setShowSaveDialog(true)
   }
 
-  return (
-    <AppShell>
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 space-y-8">
-          {/* Header */}
-          <div className="space-y-1">
-            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-              {t('searchPage.unifiedTitle')}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {t('searchPage.unifiedSubtitle')}
-            </p>
-          </div>
+  const isEmpty = turns.length === 0 && !activeQuestion
+  const sourcesBusy = searchMutation.isPending
 
-          {/* First-time user prompt: knowledge base is empty */}
-          {!sourcesLoading && !hasSources && (
-            <Card className="border-primary/30 bg-primary/5">
-              <CardContent className="flex flex-col items-center gap-3 py-8 text-center sm:flex-row sm:justify-between sm:text-left">
+  // Live answer text while streaming (partial answers before the final one).
+  const liveAnswer = finalAnswer ?? (answers.length ? answers.join('\n\n') : '')
+
+  return (
+    <div className="flex min-h-0 flex-1">
+      {/* ── Conversation column ─────────────────────────────────────── */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
+            {/* First-time user: knowledge base is empty */}
+            {!sourcesLoading && !hasSources && (
+              <div className="mb-8 flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 text-center sm:flex-row sm:justify-between sm:text-left">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
                     <FileText className="h-5 w-5" />
-                  </div>
+                  </span>
                   <div>
                     <p className="font-medium">{t('searchPage.emptyKbTitle')}</p>
                     <p className="text-sm text-muted-foreground">{t('searchPage.emptyKbDesc')}</p>
                   </div>
                 </div>
                 <Button onClick={openSourceDialog} className="shrink-0">
-                  <FileText className="h-4 w-4 mr-2" />
+                  <FileText className="mr-2 h-4 w-4" />
                   {t('searchPage.emptyKbAction')}
                 </Button>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            )}
 
-          {/* The ask box — the single primary action */}
-          <Card className="border shadow-sm">
-            <CardContent className="p-4 md:p-5 space-y-4">
-              <Textarea
-                ref={textareaRef}
-                placeholder={t('searchPage.unifiedPlaceholder')}
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSubmit()
-                  }
-                }}
-                disabled={ask.isStreaming}
-                rows={3}
-                autoFocus
-                className="resize-none border-0 shadow-none px-0 text-base focus-visible:ring-0"
-                aria-label={t('common.accessibility.enterQuestion')}
-              />
+            {isEmpty ? (
+              <EmptyConversation onPick={runQuery} />
+            ) : (
+              <div className="space-y-10">
+                {turns.map((turn) => (
+                  <Exchange
+                    key={turn.id}
+                    turn={turn}
+                    initials={initials}
+                    avatarUrl={userAvatar}
+                    aiNotConfigured={t('searchPage.aiNotConfigured')}
+                    onReferenceClick={handleReferenceClick}
+                    onSave={() => openSaveDialog(turn)}
+                    onRegenerate={() => runQuery(turn.question)}
+                  />
+                ))}
 
-              {!canAsk && !modelsLoading && (
-                <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-500">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{t('searchPage.aiNotConfigured')}</span>
-                </div>
-              )}
+                {/* Active (streaming) exchange */}
+                {activeQuestion && (
+                  <div className="space-y-5">
+                    <UserBubble text={activeQuestion} initials={initials} avatarUrl={userAvatar} />
+                    <AssistantMessage>
+                      {askError ? (
+                        <p className="text-sm text-destructive">{askError}</p>
+                      ) : liveAnswer ? (
+                        <AnswerBody content={liveAnswer} onReferenceClick={handleReferenceClick} />
+                      ) : (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <LoadingSpinner size="sm" />
+                          <span>{t('searchPage.processingQuestion')}</span>
+                        </div>
+                      )}
+                    </AssistantMessage>
+                  </div>
+                )}
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        {/* ── Sticky composer ───────────────────────────────────────── */}
+        <div className="shrink-0 bg-background/80 px-4 pb-4 pt-2 backdrop-blur sm:px-6">
+          <div className="mx-auto w-full max-w-3xl">
+            {!canAsk && !modelsLoading && (
+              <div className="mb-2 flex items-center gap-2 rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{t('searchPage.aiNotConfigured')}</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleSubmit()
+              }}
+              className="rounded-2xl border border-border bg-card shadow-sm transition-shadow duration-200 focus-within:border-ring focus-within:shadow-md"
+            >
+              <div className="flex items-center gap-2 px-3 py-2">
+                <button
+                  type="button"
+                  onClick={openSourceDialog}
+                  aria-label={t('searchPage.emptyKbAction')}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Paperclip className="h-5 w-5" />
+                </button>
+                <input
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  placeholder={question ? '' : typedPlaceholder}
+                  disabled={isStreaming}
+                  autoFocus
+                  autoComplete="off"
+                  aria-label={t('common.accessibility.enterQuestion')}
+                  className="h-12 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground disabled:opacity-60"
+                />
+                <Button
+                  type="submit"
+                  disabled={isStreaming || !question.trim()}
+                  className="h-10 w-10 shrink-0 rounded-full p-0"
+                  aria-label={t('searchPage.ask')}
+                >
+                  {isStreaming ? <LoadingSpinner size="sm" /> : <ArrowUp className="h-5 w-5" />}
+                </Button>
+              </div>
+
+              {/* Quiet control row: include-notes + admin model selection */}
+              <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5">
+                <label className="flex min-h-8 cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox
+                    checked={includeNotes}
+                    onCheckedChange={(checked) => setIncludeNotes(checked as boolean)}
+                    disabled={isStreaming}
+                  />
+                  <span className="whitespace-nowrap">{t('searchPage.includeNotes')}</span>
+                </label>
+
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-                    <Checkbox
-                      checked={includeNotes}
-                      onCheckedChange={(checked) => setIncludeNotes(checked as boolean)}
-                      disabled={searchMutation.isPending || ask.isStreaming}
-                    />
-                    {t('searchPage.includeNotes')}
-                  </label>
-
+                  <span className="hidden text-xs text-muted-foreground sm:inline">
+                    {t('searchPage.pressToSubmit')}
+                  </span>
                   {isAdmin && (
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
-                      disabled={ask.isStreaming}
+                      disabled={isStreaming}
                       onClick={() => setShowAdvancedModels(true)}
-                      className="h-8 px-2 text-xs text-muted-foreground"
+                      className="h-8 min-w-0 px-2 text-xs text-muted-foreground"
                     >
-                      <Settings2 className="h-3.5 w-3.5 mr-1.5" />
-                      {customModels ? t('searchPage.usingCustomModels') : t('searchPage.usingDefaultModels')}
-                      <span className="ml-1.5 font-medium text-foreground/70">
+                      <Settings2 className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">
+                        {customModels
+                          ? t('searchPage.usingCustomModels')
+                          : t('searchPage.usingDefaultModels')}
+                      </span>
+                      <span className="ml-1.5 hidden truncate font-medium text-foreground/70 md:inline">
                         {resolveModelName(customModels?.answer || modelDefaults?.default_chat_model)}
                       </span>
                     </Button>
                   )}
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <p className="hidden sm:block text-xs text-muted-foreground">
-                    {t('searchPage.pressToSubmit')}
-                  </p>
-                  <Button
-                    onClick={handleSubmit}
-                    disabled={ask.isStreaming || searchMutation.isPending || !question.trim()}
-                    size="icon"
-                    className="h-11 w-11 rounded-full"
-                    aria-label={t('searchPage.ask')}
-                  >
-                    {ask.isStreaming || searchMutation.isPending ? (
-                      <LoadingSpinner size="sm" />
-                    ) : (
-                      <ArrowUp className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
               </div>
+            </form>
 
-              {isAdmin && (
-                <AdvancedModelsDialog
-                  open={showAdvancedModels}
-                  onOpenChange={setShowAdvancedModels}
-                  defaultModels={{
-                    strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-                    answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-                    finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
-                  }}
-                  onSave={setCustomModels}
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Example prompts - only shown before any interaction */}
-          {showEmptyState && (
-            <div className="space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {t('searchPage.tryAsking')}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {EXAMPLE_PROMPTS.map((prompt) => {
-                  const text = t(prompt.key)
-                  return (
-                    <button
-                      key={prompt.key}
-                      type="button"
-                      onClick={() => handlePromptClick(text)}
-                      className="flex min-h-11 items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-left text-sm hover:border-primary/40 hover:bg-accent/50 transition-colors"
-                    >
-                      <span className="text-foreground">{text}</span>
-                      <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground shrink-0" />
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Answer — the primary panel */}
-          {!searchOnly && hasAskResult && (
-            <div className="space-y-4">
-              <StreamingResponse
-                isStreaming={ask.isStreaming}
-                strategy={ask.strategy}
-                answers={ask.answers}
-                finalAnswer={ask.finalAnswer}
-              />
-              {ask.finalAnswer && (
-                <Button variant="outline" onClick={() => setShowSaveDialog(true)}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {t('searchPage.saveToWorkspace')}
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Matching knowledge — quiet supporting list below the answer */}
-          {hasSearchResult && searchMutation.data && (
-            <div className="space-y-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {t('searchPage.matchingKnowledge')}
-              </p>
-
-              {searchMutation.data.results.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 text-center text-sm text-muted-foreground">
-                    {t('searchPage.noResultsFor').replace('{query}', submittedQuestion)}
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-2">
-                  {searchMutation.data.results.map((result, index) => {
-                    if (!result.parent_id) {
-                      console.warn('Search result with null parent_id:', result)
-                      return null
-                    }
-                    const [type, id] = result.parent_id.split(':')
-                    const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
-
-                    return (
-                      <Card key={index} className="shadow-none">
-                        <CardContent className="py-3">
-                          <button
-                            onClick={() => openModal(modalType, id)}
-                            className="text-sm text-primary hover:underline font-medium text-left"
-                          >
-                            {result.title}
-                          </button>
-
-                          {result.matches && result.matches.length > 0 && (
-                            <Collapsible className="mt-2">
-                              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
-                                <ChevronDown className="h-3.5 w-3.5" />
-                                {t('searchPage.matches').replace('{count}', result.matches.length.toString())}
-                              </CollapsibleTrigger>
-                              <CollapsibleContent className="mt-2 space-y-1">
-                                {result.matches.map((match, i) => (
-                                  <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted text-muted-foreground">
-                                    {match}
-                                  </div>
-                                ))}
-                              </CollapsibleContent>
-                            </Collapsible>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Save to workspace dialog */}
-          {ask.finalAnswer && (
-            <SaveToNotebooksDialog
-              open={showSaveDialog}
-              onOpenChange={setShowSaveDialog}
-              question={submittedQuestion || question}
-              answer={ask.finalAnswer}
-            />
-          )}
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              {t('searchPage.conversationDisclaimer')}
+            </p>
+          </div>
         </div>
       </div>
-    </AppShell>
+
+      {/* ── Sources panel (NotebookLM-style provenance) ───────────────── */}
+      <aside
+        aria-label={t('searchPage.matchingKnowledge')}
+        className="hidden w-80 shrink-0 flex-col border-l border-border bg-card lg:flex"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">{t('searchPage.sources')}</h2>
+          {panelSources && panelSources.length > 0 && (
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+              {panelSources.length}
+            </span>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          {sourcesBusy ? (
+            <div className="flex items-center justify-center py-10">
+              <LoadingSpinner size="sm" />
+            </div>
+          ) : panelSources && panelSources.length > 0 ? (
+            <div className="space-y-2">
+              {panelSources.map((result, i) => (
+                <SourceCard key={`${result.parent_id}-${i}`} result={result} onOpen={handleReferenceClick} />
+              ))}
+            </div>
+          ) : panelSources ? (
+            <p className="px-2 py-10 text-center text-sm text-muted-foreground">
+              {t('searchPage.noResultsFor').replace('{query}', lastQuery)}
+            </p>
+          ) : (
+            <p className="px-2 py-10 text-center text-sm text-muted-foreground">
+              {t('searchPage.sourcesEmpty')}
+            </p>
+          )}
+        </div>
+      </aside>
+
+      {/* Admin advanced-models dialog */}
+      {isAdmin && (
+        <AdvancedModelsDialog
+          open={showAdvancedModels}
+          onOpenChange={setShowAdvancedModels}
+          defaultModels={{
+            strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
+            answer: customModels?.answer || modelDefaults?.default_chat_model || '',
+            finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || '',
+          }}
+          onSave={setCustomModels}
+        />
+      )}
+
+      {/* Save to workspace */}
+      {saveTurn && (
+        <SaveToNotebooksDialog
+          open={showSaveDialog}
+          onOpenChange={(open) => {
+            setShowSaveDialog(open)
+            if (!open) setSaveTurn(null)
+          }}
+          question={saveTurn.question}
+          answer={saveTurn.answer}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Cycles a set of phrases with a type → pause → delete → next rhythm, exposed
+ * as the input placeholder. Collapses to the first phrase when the field has
+ * content or the user prefers reduced motion.
+ */
+function useTypewriterPlaceholder(phrases: string[], enabled: boolean): string {
+  const [text, setText] = useState(phrases[0] ?? '')
+
+  useEffect(() => {
+    const first = phrases[0] ?? ''
+    if (!enabled) {
+      setText(first)
+      return
+    }
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      setText(first)
+      return
+    }
+
+    let phrase = 0
+    let char = 0
+    let deleting = false
+    let timer: ReturnType<typeof setTimeout>
+
+    const tick = () => {
+      const current = phrases[phrase] ?? ''
+      if (!deleting) {
+        char += 1
+        setText(current.slice(0, char))
+        if (char >= current.length) {
+          deleting = true
+          timer = setTimeout(tick, 1800) // hold the full phrase
+          return
+        }
+        timer = setTimeout(tick, 45)
+      } else {
+        char -= 1
+        setText(current.slice(0, Math.max(0, char)))
+        if (char <= 0) {
+          deleting = false
+          phrase = (phrase + 1) % phrases.length
+          timer = setTimeout(tick, 400)
+          return
+        }
+        timer = setTimeout(tick, 22)
+      }
+    }
+
+    timer = setTimeout(tick, 500)
+    return () => clearTimeout(timer)
+  }, [enabled, phrases])
+
+  return text
+}
+
+/** Centered welcome shown before the first question. */
+function EmptyConversation({ onPick }: { onPick: (q: string) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
+      <span className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <Compass className="h-6 w-6" />
+      </span>
+      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+        {t('searchPage.unifiedTitle')}
+      </h1>
+      <p className="mt-2 max-w-md text-base text-muted-foreground">
+        {t('searchPage.unifiedSubtitle')}
+      </p>
+      <p className="mt-8 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        {t('searchPage.tryAsking')}
+      </p>
+      <div className="mt-3 flex flex-wrap justify-center gap-2">
+        {EXAMPLE_PROMPTS.map((prompt) => (
+          <button
+            key={prompt.key}
+            type="button"
+            onClick={() => onPick(t(prompt.key))}
+            className="rounded-full border border-border bg-card px-4 py-2 text-sm text-muted-foreground transition-colors hover:border-ring/40 hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t(prompt.key)}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** A committed question/answer pair. */
+function Exchange({
+  turn,
+  initials,
+  avatarUrl,
+  aiNotConfigured,
+  onReferenceClick,
+  onSave,
+  onRegenerate,
+}: {
+  turn: Turn
+  initials: string
+  avatarUrl: string | null
+  aiNotConfigured: string
+  onReferenceClick: (type: string, id: string) => void
+  onSave: () => void
+  onRegenerate: () => void
+}) {
+  return (
+    <div className="group space-y-5">
+      <UserBubble text={turn.question} initials={initials} avatarUrl={avatarUrl} />
+      <AssistantMessage>
+        {turn.noAi ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{aiNotConfigured}</span>
+          </div>
+        ) : (
+          <>
+            <AnswerBody content={turn.answer} onReferenceClick={onReferenceClick} />
+            <MessageActions content={turn.answer} onSave={onSave} onRegenerate={onRegenerate} />
+          </>
+        )}
+      </AssistantMessage>
+    </div>
+  )
+}
+
+/** Right-aligned user message — a compact chat bubble. */
+function UserBubble({
+  text,
+  initials,
+  avatarUrl,
+}: {
+  text: string
+  initials: string
+  avatarUrl?: string | null
+}) {
+  return (
+    <div className="flex items-start justify-end gap-3">
+      <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-secondary px-4 py-2.5 text-sm text-secondary-foreground">
+        {text}
+      </div>
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={avatarUrl}
+          alt=""
+          className="mt-0.5 h-8 w-8 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+          {initials}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** Left-aligned assistant message — wide, content-first, no heavy card. */
+function AssistantMessage({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+        <Compass className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="mb-1.5 text-xs font-semibold text-foreground">{t('common.appName')}</p>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// Sentinel used to strip the reference list that convertReferencesToCompactMarkdown
+// appends — we render numbered badges inline and rely on the Sources panel for
+// the full provenance, so the trailing list is unwanted.
+const REF_LIST_SENTINEL = '§IRCLASS_REFS§'
+
+function AnswerBody({
+  content,
+  onReferenceClick,
+}: {
+  content: string
+  onReferenceClick: (type: string, id: string) => void
+}) {
+  const numbered = useMemo(() => {
+    const withList = convertReferencesToCompactMarkdown(content, REF_LIST_SENTINEL)
+    return withList.split(`\n\n${REF_LIST_SENTINEL}:`)[0]
+  }, [content])
+
+  const CitationLink = useMemo(() => makeCitationLink(onReferenceClick), [onReferenceClick])
+
+  return <MarkdownRenderer components={{ a: CitationLink }}>{numbered}</MarkdownRenderer>
+}
+
+/** Renders `#ref-…` links as compact numbered citation badges. */
+function makeCitationLink(onReferenceClick: (type: string, id: string) => void) {
+  const CitationLink = ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href?: string; children?: React.ReactNode }) => {
+    if (href?.startsWith('#ref-')) {
+      const parts = href.substring(5).split('-')
+      const type = parts[0] as ReferenceType
+      const id = parts.slice(1).join('-')
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onReferenceClick(type, id)
+          }}
+          className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] bg-primary/10 px-1 align-super text-[10px] font-semibold leading-none text-primary no-underline transition-colors hover:bg-primary/20"
+        >
+          {children}
+        </button>
+      )
+    }
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" {...props} className="text-primary hover:underline">
+        {children}
+      </a>
+    )
+  }
+  CitationLink.displayName = 'CitationLink'
+  return CitationLink
+}
+
+/** Hover-revealed actions under an answer. */
+function MessageActions({
+  content,
+  onSave,
+  onRegenerate,
+}: {
+  content: string
+  onSave: () => void
+  onRegenerate: () => void
+}) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      toast.success(t('common.copyToClipboard'))
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.error(t('common.error'))
+    }
+  }
+
+  const action = (label: string, icon: React.ReactNode, onClick: () => void) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          aria-label={label}
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
+  )
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <div className="mt-3 flex items-center gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100">
+        {action(
+          t('common.copyToClipboard'),
+          copied ? <Check className="h-3.5 w-3.5 text-brand-gold" /> : <Copy className="h-3.5 w-3.5" />,
+          copy
+        )}
+        {action(t('searchPage.saveToWorkspace'), <Save className="h-3.5 w-3.5" />, onSave)}
+        {action(t('searchPage.regenerate'), <RefreshCw className="h-3.5 w-3.5" />, onRegenerate)}
+      </div>
+    </TooltipProvider>
+  )
+}
+
+/** Compact source card in the provenance panel. */
+function SourceCard({
+  result,
+  onOpen,
+}: {
+  result: StoredSource
+  onOpen: (type: string, id: string) => void
+}) {
+  const { t } = useTranslation()
+  const [type, id] = (result.parent_id ?? '').split(':')
+  const excerpt = result.matches?.[0]
+
+  const Icon = type === 'note' ? StickyNote : type === 'source_insight' ? Lightbulb : FileText
+
+  if (!id) return null
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(type, id)}
+      className="card-hover flex w-full flex-col gap-1.5 rounded-lg border border-border bg-background p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex items-start gap-2">
+        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {result.title || t('sources.untitledSource')}
+        </span>
+      </div>
+      {excerpt && (
+        <p className={cn('pl-6 text-xs leading-relaxed text-muted-foreground', 'line-clamp-3')}>
+          {excerpt}
+        </p>
+      )}
+      {result.matches && result.matches.length > 1 && (
+        <p className="pl-6 text-[11px] text-muted-foreground/70">
+          {t('searchPage.matches').replace('{count}', String(result.matches.length))}
+        </p>
+      )}
+    </button>
   )
 }

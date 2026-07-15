@@ -55,15 +55,17 @@ export default function NotebooksPage() {
     <AppShell>
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold">{t('notebooks.title')}</h1>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-            <div className="flex items-center rounded-md border p-0.5">
+          {/* Phones: view toggle + New Workspace on one row, search on its own
+              full-width row. From sm up everything sits on a single line. */}
+          <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:gap-4">
+            <div className="order-1 flex items-center rounded-md border p-0.5">
               <Button
                 variant={viewMode === 'tile' ? 'secondary' : 'ghost'}
                 size="sm"
@@ -93,9 +95,12 @@ export default function NotebooksPage() {
               placeholder={t('notebooks.searchPlaceholder')}
               autoComplete="off"
               aria-label={t('common.accessibility.searchNotebooks') || "Search notebooks"}
-              className="w-full sm:w-64"
+              className="order-3 h-11 w-full sm:order-2 sm:h-9 sm:w-64"
             />
-            <Button onClick={() => setCreateDialogOpen(true)}>
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              className="order-2 ml-auto h-11 sm:order-3 sm:ml-0 sm:h-9"
+            >
               <Plus className="h-4 w-4 mr-2" />
               {t('notebooks.newNotebook')}
             </Button>

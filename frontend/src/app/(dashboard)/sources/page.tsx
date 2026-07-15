@@ -329,8 +329,8 @@ export default function SourcesPage() {
 
   return (
     <AppShell>
-      <div className="flex flex-col h-full w-full max-w-none px-6 py-6">
-        <div className="mb-6 flex-shrink-0 flex items-start justify-between gap-4">
+      <div className="flex flex-col h-full w-full max-w-none px-4 py-6 sm:px-6">
+        <div className="mb-6 flex-shrink-0 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold">{t('sources.allSources')}</h1>
             <p className="mt-2 text-muted-foreground">
@@ -341,6 +341,7 @@ export default function SourcesPage() {
             variant="outline"
             onClick={handleExportSummary}
             disabled={exporting}
+            className="h-11 self-start sm:h-9"
           >
             {exporting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />

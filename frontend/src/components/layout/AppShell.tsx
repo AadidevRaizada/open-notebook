@@ -24,7 +24,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Mobile navigation drawer */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-80 max-w-[85vw] gap-0 p-0">
+        <SheetContent side="left" className="w-80 max-w-[85vw] gap-0 p-0" aria-describedby={undefined}>
           <SheetTitle className="sr-only">{t('navigation.nav')}</SheetTitle>
           <AppSidebar mobile onNavigate={() => setMobileNavOpen(false)} />
         </SheetContent>

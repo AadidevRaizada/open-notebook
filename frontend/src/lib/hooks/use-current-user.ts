@@ -1,6 +1,6 @@
 'use client'
 
-import { useUser } from '@clerk/nextjs'
+import { useOrganization, useUser } from '@clerk/nextjs'
 import { isClerkEnabled } from '@/lib/auth/clerk'
 
 interface CurrentUserInfo {
@@ -33,3 +33,29 @@ function usePasswordCurrentUser(): CurrentUserInfo {
 export const useCurrentUser: () => CurrentUserInfo = isClerkEnabled
   ? useClerkCurrentUser
   : usePasswordCurrentUser
+
+/**
+ * The active organisation's profile image.
+ * Null in password mode or before Clerk resolves the org.
+ */
+function useClerkOrgAvatar(): string | null {
+  const { organization } = useOrganization()
+  return organization?.imageUrl ?? null
+}
+
+export const useOrgAvatar: () => string | null = isClerkEnabled
+  ? useClerkOrgAvatar
+  : () => null
+
+/**
+ * The signed-in user's own profile image (Clerk generates one even when the
+ * user hasn't uploaded a photo). Null in password mode.
+ */
+function useClerkUserAvatar(): string | null {
+  const { user } = useUser()
+  return user?.imageUrl ?? null
+}
+
+export const useUserAvatar: () => string | null = isClerkEnabled
+  ? useClerkUserAvatar
+  : () => null

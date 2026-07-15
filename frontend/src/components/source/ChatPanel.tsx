@@ -20,6 +20,7 @@ import { SessionManager } from '@/components/source/SessionManager'
 import { MessageActions } from '@/components/source/MessageActions'
 import { convertReferencesToCompactMarkdown, createCompactReferenceLinkComponent } from '@/lib/utils/source-references'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 
@@ -75,6 +76,7 @@ export function ChatPanel({
   notebookId
 }: ChatPanelProps) {
   const { t } = useTranslation()
+  const { isAdmin } = useIsAdmin()
   const chatInputId = useId()
   const [input, setInput] = useState('')
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
@@ -277,8 +279,8 @@ export function ChatPanel({
 
         {/* Input Area */}
         <div className="flex-shrink-0 p-4 space-y-3 border-t">
-          {/* Model selector */}
-          {onModelChange && (
+          {/* Model selector — admin only; members never see model machinery */}
+          {onModelChange && isAdmin && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-muted-foreground">{t('chat.model')}</span>
               <ModelSelector
