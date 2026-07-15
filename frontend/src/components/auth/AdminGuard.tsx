@@ -9,7 +9,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 
 /**
  * Client-side guard for admin-only pages (models, transformations, advanced).
- * Redirects non-admin users back to /notebooks. This is a UX convenience only;
+ * Redirects non-admin users back to /home. This is a UX convenience only;
  * real enforcement lives in the API's require_admin dependency (403).
  */
 export function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -20,7 +20,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoaded && !isAdmin) {
       toast.error(t('common.adminOnly'))
-      router.replace('/notebooks')
+      router.replace('/home')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isAdmin])

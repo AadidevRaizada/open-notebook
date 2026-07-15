@@ -217,3 +217,17 @@
     content: none !important;
   }
 }
+
+/* Clerk org switcher in the header: follow the app theme (Clerk's default
+   styles assume a light background, which makes the label unreadable in
+   dark mode). */
+/* !important because Clerk's injected internal styles outrank page CSS. */
+.cl-organizationSwitcherTrigger,
+.cl-organizationSwitcherTrigger .cl-organizationPreviewMainIdentifier {
+  color: var(--foreground) !important;
+}
+.cl-organizationSwitcherTrigger:hover,
+.cl-organizationSwitcherTrigger:focus {
+  color: var(--foreground) !important;
+  background-color: var(--accent) !important;
+}

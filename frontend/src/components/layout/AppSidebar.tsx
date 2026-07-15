@@ -3,15 +3,11 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/lib/hooks/use-auth'
 import { useIsAdmin } from '@/lib/hooks/use-is-admin'
-import { useCurrentUser } from '@/lib/hooks/use-current-user'
-import { isClerkEnabled } from '@/lib/auth/clerk'
-import { OrganizationSwitcher } from '@clerk/nextjs'
 import { useSidebarStore } from '@/lib/stores/sidebar-store'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import {
@@ -35,7 +31,6 @@ import {
   Book,
   Search,
   Settings,
-  LogOut,
   ChevronLeft,
   Menu,
   FileText,
@@ -80,9 +75,8 @@ interface AppSidebarProps {
 export function AppSidebar({ mobile = false, onNavigate }: AppSidebarProps) {
   const { t } = useTranslation()
   const { isAdmin } = useIsAdmin()
-  const { name, initials } = useCurrentUser()
   const pathname = usePathname()
-  const { logout } = useAuth()
+  const searchParams = useSearchParams()
   const { isCollapsed: storeCollapsed, toggleCollapse } = useSidebarStore()
   const isCollapsed = mobile ? false : storeCollapsed
   const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
@@ -100,8 +94,13 @@ export function AppSidebar({ mobile = false, onNavigate }: AppSidebarProps) {
   }
 
   const isActive = (href: string) => {
-    const base = href.split('?')[0]
-    return pathname === base || pathname?.startsWith(`${base}/`) || false
+    const [base, query] = href.split('?')
+    if (pathname !== base && !pathname?.startsWith(`${base}/`)) return false
+    // Tab-scoped links (the /admin?tab=… trio) are only active on their tab,
+    // otherwise all three would highlight at once.
+    if (!query) return true
+    const tab = new URLSearchParams(query).get('tab')
+    return (searchParams?.get('tab') ?? 'users') === tab
   }
 
   const renderItem = (item: NavItem) => {
@@ -232,7 +231,7 @@ export function AppSidebar({ mobile = false, onNavigate }: AppSidebarProps) {
           )}
         </div>
 
-        <nav className={cn('flex-1 space-y-1 overflow-y-auto py-4', isCollapsed ? 'px-2' : 'px-3')}>
+        <nav className={cn('min-h-0 flex-1 space-y-1 overflow-y-auto py-4', isCollapsed ? 'px-2' : 'px-3')}>
           <div className={cn('mb-4', isCollapsed ? 'px-0' : 'px-3')}>
             <DropdownMenu open={createMenuOpen} onOpenChange={setCreateMenuOpen}>
               {isCollapsed ? (
@@ -310,48 +309,9 @@ export function AppSidebar({ mobile = false, onNavigate }: AppSidebarProps) {
           )}
         </nav>
 
-        <div className={cn('border-t border-sidebar-border p-3 space-y-2', isCollapsed && 'px-2')}>
-          {/* Current user */}
-          {!isCollapsed && name && (
-            <div className="flex items-center gap-3 px-1 py-1.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
-                {initials}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-sidebar-foreground">{name}</div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {isAdmin ? t('adminPage.roleAdmin') : t('adminPage.roleMember')}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Organization — switch only. Creating orgs, inviting members and
-              joining orgs all live in one place: the Admin page. */}
-          {isClerkEnabled && (
-            <div className={cn('flex', isCollapsed ? 'justify-center' : 'w-full')}>
-              <OrganizationSwitcher
-                hidePersonal
-                afterSelectOrganizationUrl="/home"
-                appearance={{
-                  elements: {
-                    rootBox: isCollapsed ? '' : 'w-full',
-                    organizationSwitcherTrigger: cn(
-                      'rounded-md border border-sidebar-border',
-                      isCollapsed
-                        ? 'justify-center px-1 py-1'
-                        : 'w-full justify-start gap-2 px-2 py-1.5'
-                    ),
-                    organizationPreviewTextContainer: isCollapsed ? 'hidden' : '',
-                    // Keep the switcher a pure org-switcher; management is in Admin.
-                    organizationSwitcherPopoverActionButton__createOrganization: 'hidden',
-                    organizationSwitcherPopoverActionButton__manageOrganization: 'hidden',
-                  },
-                }}
-              />
-            </div>
-          )}
-
+        {/* App preferences only. Account, organization and sign-out all
+            live in the top-right account menu (AppHeader). */}
+        <div className={cn('shrink-0 border-t border-sidebar-border p-3', isCollapsed && 'px-2')}>
           {isCollapsed ? (
             <div className="flex flex-col items-center gap-2">
               <Tooltip>
@@ -370,36 +330,11 @@ export function AppSidebar({ mobile = false, onNavigate }: AppSidebarProps) {
                 </TooltipTrigger>
                 <TooltipContent side="right">{t('common.language')}</TooltipContent>
               </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="sidebar-menu-item"
-                    onClick={logout}
-                    aria-label={t('common.signOut')}
-                  >
-                    <LogOut className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right">{t('common.signOut')}</TooltipContent>
-              </Tooltip>
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <ThemeToggle iconOnly />
               <LanguageToggle iconOnly />
-              <div className="flex-1" />
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2 text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                onClick={logout}
-                aria-label={t('common.signOut')}
-              >
-                <LogOut className="h-4 w-4" />
-                {t('common.signOut')}
-              </Button>
             </div>
           )}
         </div>

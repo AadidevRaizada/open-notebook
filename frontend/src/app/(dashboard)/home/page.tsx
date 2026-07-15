@@ -65,7 +65,9 @@ function HomeContent() {
   const router = useRouter()
   const greeting = useGreeting()
   const { name } = useCurrentUser()
-  const firstName = name?.split(/\s+/)[0] ?? null
+  // useCurrentUser falls back to the email address when the account has no
+  // name set — greet those users generically rather than by their email.
+  const firstName = name && !name.includes('@') ? name.split(/\s+/)[0] : null
   const { isAdmin } = useIsAdmin()
   const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
 
@@ -245,7 +247,8 @@ function AdminStatStrip() {
   const { data: users } = useAdminUsers(true)
   const { data: docCount } = useQuery({
     queryKey: ['home', 'document-count'],
-    queryFn: async () => (await sourcesApi.list({ limit: 1000 })).length,
+    // The API caps limit at 100; anything above 422s.
+    queryFn: async () => (await sourcesApi.list({ limit: 100 })).length,
     staleTime: 5 * 60 * 1000,
   })
 
@@ -257,7 +260,7 @@ function AdminStatStrip() {
   const stats = [
     docCount !== undefined && {
       label: t('homePage.statDocuments'),
-      value: docCount >= 1000 ? '999+' : String(docCount),
+      value: docCount >= 100 ? '99+' : String(docCount),
     },
     users && { label: t('homePage.statUsers'), value: String(users.length) },
     queries !== undefined && { label: t('homePage.statQueries'), value: String(queries) },

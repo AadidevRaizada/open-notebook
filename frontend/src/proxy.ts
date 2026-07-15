@@ -43,8 +43,10 @@ function passwordProxy(request: NextRequest) {
 export const proxy = isClerkEnabled ? clerkProxy : passwordProxy
 
 export const config = {
+  // Skip API routes, Next internals and public static assets (by extension) —
+  // otherwise brand images like /irs-logo.png get redirected to /sign-in.
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next|[^?]*\\.(?:png|gif|svg|jpe?g|webp|ico|css|js|map|txt|woff2?|ttf|webmanifest)).*)',
     '/__clerk/:path*',
   ],
 }

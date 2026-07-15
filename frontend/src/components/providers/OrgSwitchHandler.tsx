@@ -20,11 +20,14 @@ import { useNavigationStore } from '@/lib/stores/navigation-store'
  * always has a ClerkProvider ancestor.
  */
 export function OrgSwitchHandler() {
-  const { organization } = useOrganization()
+  const { organization, isLoaded } = useOrganization()
   const router = useRouter()
   const previousOrgId = useRef<string | null | undefined>(undefined)
 
   useEffect(() => {
+    // Wait for Clerk to hydrate; otherwise the null → org transition right
+    // after sign-in registers as an org switch and hijacks the landing page.
+    if (!isLoaded) return
     const currentOrgId = organization?.id ?? null
 
     // Record the initial value without triggering a reset on first load.
@@ -38,9 +41,9 @@ export function OrgSwitchHandler() {
       // Drop all cached queries so no other org's data lingers in the UI.
       queryClient.clear()
       useNavigationStore.getState().clearReturnTo()
-      router.push('/notebooks')
+      router.push('/home')
     }
-  }, [organization?.id, router])
+  }, [isLoaded, organization?.id, router])
 
   return null
 }
