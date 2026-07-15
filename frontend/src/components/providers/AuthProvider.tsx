@@ -12,7 +12,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return <>{children}</>
   }
   return (
-    <ClerkProvider>
+    <ClerkProvider afterSignOutUrl="/sign-in">
       <OrgSwitchHandler />
       {children}
     </ClerkProvider>

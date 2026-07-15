@@ -11,11 +11,11 @@ import { AuthProvider } from "@/components/providers/AuthProvider";
 import { themeScript } from "@/lib/theme-script";
 import { I18nProvider } from "@/components/providers/I18nProvider";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "IRS Knowledge base",
-  description: "Privacy-focused research and knowledge management",
+  title: "IRClass Navigator",
+  description: "Maritime Knowledge Intelligence Platform",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className={inter.className}>
+      <body className={`${inter.variable} ${inter.className}`}>
         <AuthProvider>
           <ErrorBoundary>
             <ThemeProvider>

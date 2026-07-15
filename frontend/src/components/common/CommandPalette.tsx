@@ -29,25 +29,30 @@ import {
   Monitor,
   Loader2,
   ShieldCheck,
+  Home,
+  Building2,
+  BarChart3,
 } from 'lucide-react'
 import { useTranslation } from '@/lib/hooks/use-translation'
+import { useCommandPaletteStore } from '@/lib/stores/command-palette-store'
 import type { TFunction } from 'i18next'
 
 const getNavigationItems = (t: TFunction, isAdmin: boolean) => [
-  { name: t('navigation.sources'), href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload'] },
-  { name: t('navigation.notebooks'), href: '/notebooks', icon: Book, keywords: ['notes', 'research', 'projects'] },
-  { name: t('navigation.askAndSearch'), href: '/search', icon: Search, keywords: ['find', 'query'] },
+  { name: t('navigation.home'), href: '/home', icon: Home, keywords: ['start', 'dashboard', 'welcome'] },
+  { name: t('navigation.askNavigator'), href: '/search', icon: Search, keywords: ['ask', 'find', 'query', 'question'] },
+  { name: t('navigation.knowledge'), href: '/sources', icon: FileText, keywords: ['files', 'documents', 'upload', 'sources', 'library'] },
+  { name: t('navigation.workspaces'), href: '/notebooks', icon: Book, keywords: ['notes', 'research', 'projects', 'notebooks'] },
   // Admin-only destinations; the API enforces this with 403s as well.
   ...(isAdmin
     ? [
-        { name: t('navigation.admin'), href: '/admin', icon: ShieldCheck, keywords: ['users', 'invite', 'usage', 'accounts'] },
-        { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot, keywords: ['ai', 'llm', 'providers', 'openai', 'anthropic'] },
-        { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions'] },
+        { name: t('navigation.usersAccess'), href: '/admin?tab=users', icon: ShieldCheck, keywords: ['users', 'invite', 'accounts', 'admin'] },
+        { name: t('navigation.departments'), href: '/admin?tab=departments', icon: Building2, keywords: ['organizations', 'org', 'teams', 'members'] },
+        { name: t('navigation.analytics'), href: '/admin?tab=usage', icon: BarChart3, keywords: ['usage', 'metrics', 'activity', 'queries'] },
+        { name: t('navigation.settings'), href: '/settings', icon: Settings, keywords: ['preferences', 'config', 'options'] },
+        { name: t('navigation.models'), href: '/settings/api-keys', icon: Bot, keywords: ['ai', 'llm', 'providers', 'configuration'] },
+        { name: t('navigation.transformations'), href: '/transformations', icon: Shuffle, keywords: ['prompts', 'templates', 'actions', 'insights'] },
+        { name: t('navigation.advanced'), href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools', 'maintenance'] },
       ]
-    : []),
-  { name: t('navigation.settings'), href: '/settings', icon: Settings, keywords: ['preferences', 'config', 'options'] },
-  ...(isAdmin
-    ? [{ name: t('navigation.advanced'), href: '/advanced', icon: Wrench, keywords: ['debug', 'system', 'tools'] }]
     : []),
 ]
 
@@ -70,7 +75,9 @@ export function CommandPalette() {
   const createItems = useMemo(() => getCreateItems(t), [t])
   const themeItems = useMemo(() => getThemeItems(t), [t])
   
-  const [open, setOpen] = useState(false)
+  const open = useCommandPaletteStore((s) => s.isOpen)
+  const setOpen = useCommandPaletteStore((s) => s.setOpen)
+  const toggleOpen = useCommandPaletteStore((s) => s.toggle)
   const [query, setQuery] = useState('')
   const router = useRouter()
   const { openSourceDialog, openNotebookDialog, openPodcastDialog } = useCreateDialogs()
@@ -93,14 +100,14 @@ export function CommandPalette() {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         e.stopPropagation()
-        setOpen((open) => !open)
+        toggleOpen()
       }
     }
 
     // Use capture phase to intercept before other handlers
     document.addEventListener('keydown', down, true)
     return () => document.removeEventListener('keydown', down, true)
-  }, [])
+  }, [toggleOpen])
 
   // Reset query when dialog closes
   useEffect(() => {
@@ -114,7 +121,7 @@ export function CommandPalette() {
     setQuery('')
     // Use setTimeout to ensure dialog closes before action
     setTimeout(callback, 0)
-  }, [])
+  }, [setOpen])
 
   const handleNavigate = useCallback((href: string) => {
     handleSelect(() => router.push(href))

@@ -16,15 +16,15 @@ const isPublicRoute = createRouteMatcher([
   '/config',
 ])
 
-function redirectRootToNotebooks(request: NextRequest): NextResponse | null {
+function redirectRootToHome(request: NextRequest): NextResponse | null {
   if (request.nextUrl.pathname === '/') {
-    return NextResponse.redirect(new URL('/notebooks', request.url))
+    return NextResponse.redirect(new URL('/home', request.url))
   }
   return null
 }
 
 const clerkProxy = clerkMiddleware(async (auth, request) => {
-  const rootRedirect = redirectRootToNotebooks(request)
+  const rootRedirect = redirectRootToHome(request)
   if (rootRedirect) return rootRedirect
 
   if (!isPublicRoute(request)) {
@@ -36,7 +36,7 @@ const clerkProxy = clerkMiddleware(async (auth, request) => {
 })
 
 function passwordProxy(request: NextRequest) {
-  return redirectRootToNotebooks(request) ?? NextResponse.next()
+  return redirectRootToHome(request) ?? NextResponse.next()
 }
 
 // Named `proxy` export is Next.js 16's middleware convention for proxy.ts.

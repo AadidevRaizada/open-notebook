@@ -37,8 +37,8 @@ export function useAdminOrganizations(enabled = true) {
   })
 }
 
-export function useAdminUsage() {
-  return useQuery({ queryKey: ADMIN_QUERY_KEYS.usage, queryFn: adminApi.getUsage })
+export function useAdminUsage(enabled = true) {
+  return useQuery({ queryKey: ADMIN_QUERY_KEYS.usage, queryFn: adminApi.getUsage, enabled })
 }
 
 function useInvalidateAdmin() {

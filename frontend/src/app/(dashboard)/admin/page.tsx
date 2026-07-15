@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { AxiosError } from 'axios'
 import {
@@ -99,8 +100,18 @@ export default function AdminPage() {
   )
 }
 
+const ADMIN_TABS = ['users', 'departments', 'usage'] as const
+type AdminTab = (typeof ADMIN_TABS)[number]
+
 function AdminPageContent() {
   const { t } = useTranslation()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const rawTab = searchParams?.get('tab')
+  const tab: AdminTab = ADMIN_TABS.includes(rawTab as AdminTab)
+    ? (rawTab as AdminTab)
+    : 'users'
+
   return (
     <AppShell>
       <div className="flex-1 overflow-y-auto">
@@ -111,13 +122,20 @@ function AdminPageContent() {
               <p className="text-muted-foreground mt-2">{t('adminPage.description')}</p>
             </div>
 
-            <Tabs defaultValue="users">
+            <Tabs
+              value={tab}
+              onValueChange={(value) => router.replace(`/admin?tab=${value}`, { scroll: false })}
+            >
               <TabsList>
                 <TabsTrigger value="users">{t('adminPage.usersTab')}</TabsTrigger>
+                <TabsTrigger value="departments">{t('adminPage.departmentsTab')}</TabsTrigger>
                 <TabsTrigger value="usage">{t('adminPage.usageTab')}</TabsTrigger>
               </TabsList>
               <TabsContent value="users" className="space-y-6 mt-4">
                 <UsersTab />
+              </TabsContent>
+              <TabsContent value="departments" className="space-y-6 mt-4">
+                <DepartmentsTab />
               </TabsContent>
               <TabsContent value="usage" className="space-y-6 mt-4">
                 <UsageTab />
@@ -409,22 +427,6 @@ function UsersTab() {
         )}
       </Card>
 
-      <Card className="p-6 space-y-4">
-        <h2 className="text-lg font-semibold">{t('adminPage.organizationsTitle')}</h2>
-        <p className="text-xs text-muted-foreground">
-          {t('adminPage.organizationsDesc')}
-        </p>
-        {(organizations ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('adminPage.organizationsEmpty')}</p>
-        ) : (
-          <div className="divide-y">
-            {(organizations ?? []).map((org) => (
-              <OrgRow key={org.id} org={org} />
-            ))}
-          </div>
-        )}
-      </Card>
-
       <AlertDialog open={confirmAction !== null} onOpenChange={(open) => !open && setConfirmAction(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -461,6 +463,47 @@ function UsersTab() {
         </AlertDialogContent>
       </AlertDialog>
     </>
+  )
+}
+
+function DepartmentsTab() {
+  const { t } = useTranslation()
+  const { data: status, isLoading: statusLoading } = useAdminStatus()
+  const userManagement = status?.user_management ?? false
+  const { data: organizations, isLoading } = useAdminOrganizations(userManagement)
+
+  if (statusLoading || (userManagement && isLoading)) {
+    return (
+      <div className="flex justify-center p-8">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!userManagement) {
+    return (
+      <Card className="p-6 text-sm text-muted-foreground">
+        {t('adminPage.userManagementUnavailable')}
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="p-6 space-y-4">
+      <h2 className="text-lg font-semibold">{t('adminPage.organizationsTitle')}</h2>
+      <p className="text-xs text-muted-foreground">
+        {t('adminPage.organizationsDesc')}
+      </p>
+      {(organizations ?? []).length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('adminPage.organizationsEmpty')}</p>
+      ) : (
+        <div className="divide-y">
+          {(organizations ?? []).map((org) => (
+            <OrgRow key={org.id} org={org} />
+          ))}
+        </div>
+      )}
+    </Card>
   )
 }
 

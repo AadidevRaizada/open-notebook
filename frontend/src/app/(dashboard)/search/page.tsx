@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
@@ -8,24 +8,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
-  Sparkles,
-  Search,
   ChevronDown,
   AlertCircle,
   Settings2,
   Save,
   ArrowUp,
   FileText,
-  Book,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { useSearch } from '@/lib/hooks/use-search'
 import { useAsk } from '@/lib/hooks/use-ask'
@@ -33,11 +23,12 @@ import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import { useHasAnySources } from '@/lib/hooks/use-sources'
+import { useIsAdmin } from '@/lib/hooks/use-is-admin'
+import { recordRecentQuestion } from '@/lib/utils/recent-questions'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { StreamingResponse } from '@/components/search/StreamingResponse'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
-import { cn } from '@/lib/utils'
 
 // Full key paths so i18n static analysis (locales/index.test.ts) can see them
 const EXAMPLE_PROMPTS = [
@@ -49,28 +40,17 @@ const EXAMPLE_PROMPTS = [
 
 export default function SearchPage() {
   const { t } = useTranslation()
-  // URL params
   const searchParams = useSearchParams()
   const urlQuery = searchParams?.get('q') || ''
-  const rawMode = searchParams?.get('mode')
-  const urlMode = rawMode === 'search' ? 'search' : 'ask'
+  // Old deep links with ?mode=search still work (list only, no answer),
+  // but no UI exposes the mode anymore — typing is enough.
+  const urlSearchOnly = searchParams?.get('mode') === 'search'
 
-  // Mode state (controlled) - replaces the old tabs with a segmented control
-  const [mode, setMode] = useState<'ask' | 'search'>(
-    urlMode === 'search' ? 'search' : 'ask'
-  )
+  const [question, setQuestion] = useState(urlQuery)
+  const [includeNotes, setIncludeNotes] = useState(true)
+  const [searchOnly, setSearchOnly] = useState(urlSearchOnly)
 
-  // Search state
-  const [searchQuery, setSearchQuery] = useState(urlMode === 'search' ? urlQuery : '')
-  const [searchType, setSearchType] = useState<'text' | 'vector'>('text')
-  const [searchSources, setSearchSources] = useState(true)
-  const [searchNotes, setSearchNotes] = useState(true)
-  const [showSearchOptions, setShowSearchOptions] = useState(false)
-
-  // Ask state
-  const [askQuestion, setAskQuestion] = useState(urlMode === 'ask' ? urlQuery : '')
-
-  // Advanced models dialog
+  // Advanced models dialog (admin only)
   const [showAdvancedModels, setShowAdvancedModels] = useState(false)
   const [customModels, setCustomModels] = useState<{
     strategy: string
@@ -78,17 +58,17 @@ export default function SearchPage() {
     finalAnswer: string
   } | null>(null)
 
-  // Save to notebooks dialog
   const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [submittedQuestion, setSubmittedQuestion] = useState('')
 
-  // Hooks
   const searchMutation = useSearch()
   const ask = useAsk()
   const { data: modelDefaults, isLoading: modelsLoading } = useModelDefaults()
   const { data: availableModels } = useModels()
   const { openModal } = useModalManager()
-  const { openSourceDialog, openNotebookDialog } = useCreateDialogs()
+  const { openSourceDialog } = useCreateDialogs()
   const { hasSources, isLoading: sourcesLoading } = useHasAnySources()
+  const { isAdmin } = useIsAdmin()
 
   const modelNameById = useMemo(() => {
     if (!availableModels) {
@@ -103,91 +83,85 @@ export default function SearchPage() {
   }
 
   const hasEmbeddingModel = !!modelDefaults?.default_embedding_model
+  // The answer stream needs both a chat model and retrieval (embeddings).
+  const canAsk = !!modelDefaults?.default_chat_model && hasEmbeddingModel
 
-  // Track if we've already auto-triggered from URL params
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Track auto-triggering from URL params
   const hasAutoTriggeredRef = useRef(false)
-  const lastUrlParamsRef = useRef({ q: '', mode: '' })
+  const lastUrlParamsRef = useRef({ q: '', searchOnly: false })
 
-  const handleSearch = useCallback(() => {
-    if (!searchQuery.trim()) return
+  const runQuery = useCallback(
+    (rawQuestion: string, options?: { searchOnly?: boolean }) => {
+      const q = rawQuestion.trim()
+      if (!q || modelsLoading) return
 
-    searchMutation.mutate({
-      query: searchQuery,
-      type: searchType,
-      limit: 100,
-      search_sources: searchSources,
-      search_notes: searchNotes,
-      minimum_score: 0.2
-    })
-  }, [searchQuery, searchType, searchSources, searchNotes, searchMutation])
+      const listOnly = options?.searchOnly ?? false
+      setSubmittedQuestion(q)
+      recordRecentQuestion(q)
 
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      handleSearch()
-    }
-  }
+      // Matching knowledge list — the system picks the retrieval strategy.
+      searchMutation.mutate({
+        query: q,
+        type: hasEmbeddingModel ? 'vector' : 'text',
+        limit: 100,
+        search_sources: true,
+        search_notes: includeNotes,
+        minimum_score: 0.2,
+      })
 
-  const handleAsk = useCallback(() => {
-    if (!askQuestion.trim() || !modelDefaults?.default_chat_model) return
+      // Answer stream in parallel, when AI is configured.
+      if (!listOnly && canAsk && modelDefaults?.default_chat_model) {
+        const models = customModels || {
+          strategy: modelDefaults.default_chat_model,
+          answer: modelDefaults.default_chat_model,
+          finalAnswer: modelDefaults.default_chat_model,
+        }
+        ask.sendAsk(q, models)
+      }
+    },
+    [modelsLoading, hasEmbeddingModel, includeNotes, canAsk, modelDefaults, customModels, ask, searchMutation]
+  )
 
-    const models = customModels || {
-      strategy: modelDefaults.default_chat_model,
-      answer: modelDefaults.default_chat_model,
-      finalAnswer: modelDefaults.default_chat_model
-    }
+  const handleSubmit = useCallback(() => {
+    if (ask.isStreaming || !question.trim()) return
+    setSearchOnly(false)
+    runQuery(question)
+  }, [ask.isStreaming, question, runQuery])
 
-    ask.sendAsk(askQuestion, models)
-  }, [askQuestion, modelDefaults, customModels, ask])
-
-  // Auto-trigger search/ask when arriving with URL params
+  // Auto-trigger when arriving with URL params (?q=...&mode=search honored)
   useEffect(() => {
-    if (hasAutoTriggeredRef.current || !urlQuery) return
-    if (urlMode === 'ask' && modelsLoading) return
+    if (hasAutoTriggeredRef.current || !urlQuery || modelsLoading) return
+    hasAutoTriggeredRef.current = true
+    runQuery(urlQuery, { searchOnly: urlSearchOnly })
+  }, [urlQuery, urlSearchOnly, modelsLoading, runQuery])
 
-    if (urlMode === 'search') {
-      handleSearch()
-      hasAutoTriggeredRef.current = true
-    } else if (urlMode === 'ask' && modelDefaults?.default_chat_model) {
-      handleAsk()
-      hasAutoTriggeredRef.current = true
-    }
-  }, [urlQuery, urlMode, modelsLoading, modelDefaults, handleSearch, handleAsk])
-
-  // Handle URL param changes while on page (e.g., from command palette again)
+  // Handle URL param changes while on the page (e.g., command palette again)
   useEffect(() => {
     const currentQ = searchParams?.get('q') || ''
-    const rawCurrentMode = searchParams?.get('mode')
-    const currentMode = rawCurrentMode === 'search' ? 'search' : 'ask'
+    const currentSearchOnly = searchParams?.get('mode') === 'search'
 
-    if (currentQ !== lastUrlParamsRef.current.q || currentMode !== lastUrlParamsRef.current.mode) {
-      lastUrlParamsRef.current = { q: currentQ, mode: currentMode }
-
+    if (
+      currentQ !== lastUrlParamsRef.current.q ||
+      currentSearchOnly !== lastUrlParamsRef.current.searchOnly
+    ) {
+      lastUrlParamsRef.current = { q: currentQ, searchOnly: currentSearchOnly }
       if (currentQ) {
-        if (currentMode === 'search') {
-          setSearchQuery(currentQ)
-          setMode('search')
-          hasAutoTriggeredRef.current = false
-        } else {
-          setAskQuestion(currentQ)
-          setMode('ask')
-          hasAutoTriggeredRef.current = false
-        }
+        setQuestion(currentQ)
+        setSearchOnly(currentSearchOnly)
+        hasAutoTriggeredRef.current = false
       }
     }
   }, [searchParams])
 
-  const isAsk = mode === 'ask'
   const hasAskResult = ask.isStreaming || ask.finalAnswer || ask.answers.length > 0
   const hasSearchResult = !!searchMutation.data
-  const showEmptyState = isAsk ? !hasAskResult : !hasSearchResult
+  const showEmptyState = !hasAskResult && !hasSearchResult && !searchMutation.isPending
 
   const handlePromptClick = (text: string) => {
-    if (isAsk) {
-      setAskQuestion(text)
-    } else {
-      setSearchQuery(text)
-    }
+    setQuestion(text)
+    textareaRef.current?.focus()
   }
 
   return (
@@ -195,25 +169,13 @@ export default function SearchPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 space-y-8">
           {/* Header */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-                {t('searchPage.askAndSearch')}
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                {t('searchPage.homeSubtitle')}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={openSourceDialog}>
-                <FileText className="h-4 w-4 mr-2" />
-                {t('common.newSource')}
-              </Button>
-              <Button variant="outline" size="sm" onClick={openNotebookDialog}>
-                <Book className="h-4 w-4 mr-2" />
-                {t('common.newNotebook')}
-              </Button>
-            </div>
+          <div className="space-y-1">
+            <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
+              {t('searchPage.unifiedTitle')}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {t('searchPage.unifiedSubtitle')}
+            </p>
           </div>
 
           {/* First-time user prompt: knowledge base is empty */}
@@ -237,83 +199,46 @@ export default function SearchPage() {
             </Card>
           )}
 
-          {/* Segmented mode control */}
-          <div
-            role="radiogroup"
-            aria-label={t('common.accessibility.searchKB')}
-            className="inline-flex rounded-xl border bg-muted/40 p-1 gap-1"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={isAsk}
-              onClick={() => setMode('ask')}
-              className={cn(
-                'flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
-                isAsk
-                  ? 'bg-background shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Sparkles className={cn('h-4 w-4', isAsk && 'text-primary')} />
-              <span className="text-left">
-                <span className="block leading-tight">{t('searchPage.askBeta')}</span>
-                <span className="block text-xs font-normal text-muted-foreground leading-tight">
-                  {t('searchPage.askModeHint')}
-                </span>
-              </span>
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!isAsk}
-              onClick={() => setMode('search')}
-              className={cn(
-                'flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
-                !isAsk
-                  ? 'bg-background shadow-sm text-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Search className={cn('h-4 w-4', !isAsk && 'text-primary')} />
-              <span className="text-left">
-                <span className="block leading-tight">{t('searchPage.search')}</span>
-                <span className="block text-xs font-normal text-muted-foreground leading-tight">
-                  {t('searchPage.searchModeHint')}
-                </span>
-              </span>
-            </button>
-          </div>
-
-          {/* Unified command card */}
+          {/* The ask box — the single primary action */}
           <Card className="border shadow-sm">
             <CardContent className="p-4 md:p-5 space-y-4">
-              {isAsk ? (
-                <>
-                  <Textarea
-                    placeholder={t('searchPage.enterQuestionPlaceholder')}
-                    value={askQuestion}
-                    onChange={(e) => setAskQuestion(e.target.value)}
-                    onKeyDown={(e) => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !ask.isStreaming && askQuestion.trim()) {
-                        e.preventDefault()
-                        handleAsk()
-                      }
-                    }}
-                    disabled={ask.isStreaming}
-                    rows={3}
-                    className="resize-none border-0 shadow-none px-0 text-base focus-visible:ring-0"
-                    aria-label={t('common.accessibility.enterQuestion')}
-                  />
+              <Textarea
+                ref={textareaRef}
+                placeholder={t('searchPage.unifiedPlaceholder')}
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSubmit()
+                  }
+                }}
+                disabled={ask.isStreaming}
+                rows={3}
+                autoFocus
+                className="resize-none border-0 shadow-none px-0 text-base focus-visible:ring-0"
+                aria-label={t('common.accessibility.enterQuestion')}
+              />
 
-                  {!hasEmbeddingModel && (
-                    <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-500">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>{t('searchPage.noEmbeddingModel')}</span>
-                    </div>
-                  )}
+              {!canAsk && !modelsLoading && (
+                <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 p-3 text-sm text-amber-700 dark:text-amber-500">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{t('searchPage.aiNotConfigured')}</span>
+                </div>
+              )}
 
-                  <div className="flex items-center justify-between gap-3 border-t pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                    <Checkbox
+                      checked={includeNotes}
+                      onCheckedChange={(checked) => setIncludeNotes(checked as boolean)}
+                      disabled={searchMutation.isPending || ask.isStreaming}
+                    />
+                    {t('searchPage.includeNotes')}
+                  </label>
+
+                  {isAdmin && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -327,154 +252,40 @@ export default function SearchPage() {
                         {resolveModelName(customModels?.answer || modelDefaults?.default_chat_model)}
                       </span>
                     </Button>
+                  )}
+                </div>
 
-                    <div className="flex items-center gap-2">
-                      <p className="hidden sm:block text-xs text-muted-foreground">
-                        {t('searchPage.pressToSubmit')}
-                      </p>
-                      <Button
-                        onClick={handleAsk}
-                        disabled={ask.isStreaming || !askQuestion.trim() || !hasEmbeddingModel}
-                        size="icon"
-                        className="h-9 w-9 rounded-full"
-                        aria-label={t('searchPage.ask')}
-                      >
-                        {ask.isStreaming ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          <ArrowUp className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <p className="hidden sm:block text-xs text-muted-foreground">
+                    {t('searchPage.pressToSubmit')}
+                  </p>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={ask.isStreaming || searchMutation.isPending || !question.trim()}
+                    size="icon"
+                    className="h-11 w-11 rounded-full"
+                    aria-label={t('searchPage.ask')}
+                  >
+                    {ask.isStreaming || searchMutation.isPending ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
 
-                  <AdvancedModelsDialog
-                    open={showAdvancedModels}
-                    onOpenChange={setShowAdvancedModels}
-                    defaultModels={{
-                      strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
-                      answer: customModels?.answer || modelDefaults?.default_chat_model || '',
-                      finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
-                    }}
-                    onSave={setCustomModels}
-                  />
-                </>
-              ) : (
-                <>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <input
-                        placeholder={t('searchPage.enterSearchPlaceholder')}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={handleSearchKeyDown}
-                        disabled={searchMutation.isPending}
-                        aria-label={t('common.accessibility.enterSearch')}
-                        autoComplete="off"
-                        className="w-full h-11 rounded-lg border bg-transparent pl-10 pr-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50"
-                      />
-                    </div>
-                    <Button
-                      onClick={handleSearch}
-                      disabled={searchMutation.isPending || !searchQuery.trim()}
-                      aria-label={t('common.accessibility.searchKBBtn')}
-                      className="h-11 px-5"
-                    >
-                      {searchMutation.isPending ? (
-                        <LoadingSpinner size="sm" />
-                      ) : (
-                        t('searchPage.search')
-                      )}
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center justify-between border-t pt-3">
-                    <Popover open={showSearchOptions} onOpenChange={setShowSearchOptions}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          disabled={searchMutation.isPending}
-                          className="h-8 px-2 text-xs text-muted-foreground"
-                        >
-                          <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
-                          {t('searchPage.filters')}
-                          <ChevronDown className="h-3 w-3 ml-1" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-72 space-y-4">
-                        <div className="space-y-2" role="group" aria-labelledby="search-type-label">
-                          <span id="search-type-label" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            {t('searchPage.searchType')}
-                          </span>
-                          {!hasEmbeddingModel && (
-                            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-500">
-                              <AlertCircle className="h-3.5 w-3.5" />
-                              <span>{t('searchPage.vectorSearchWarning')}</span>
-                            </div>
-                          )}
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setSearchType('text')}
-                              disabled={modelsLoading || searchMutation.isPending}
-                              className={cn(
-                                'flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors',
-                                searchType === 'text'
-                                  ? 'border-primary bg-primary/5 text-primary font-medium'
-                                  : 'text-muted-foreground hover:text-foreground'
-                              )}
-                            >
-                              {t('searchPage.textSearch')}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSearchType('vector')}
-                              disabled={!hasEmbeddingModel || searchMutation.isPending}
-                              className={cn(
-                                'flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-                                searchType === 'vector'
-                                  ? 'border-primary bg-primary/5 text-primary font-medium'
-                                  : 'text-muted-foreground hover:text-foreground'
-                              )}
-                            >
-                              {t('searchPage.vectorSearch')}
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2" role="group" aria-labelledby="search-in-label">
-                          <span id="search-in-label" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                            {t('searchPage.searchIn')}
-                          </span>
-                          <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <Checkbox
-                                checked={searchSources}
-                                onCheckedChange={(checked) => setSearchSources(checked as boolean)}
-                                disabled={searchMutation.isPending}
-                              />
-                              {t('searchPage.searchSources')}
-                            </label>
-                            <label className="flex items-center gap-2 text-sm cursor-pointer">
-                              <Checkbox
-                                checked={searchNotes}
-                                onCheckedChange={(checked) => setSearchNotes(checked as boolean)}
-                                disabled={searchMutation.isPending}
-                              />
-                              {t('searchPage.searchNotes')}
-                            </label>
-                          </div>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-
-                    <p className="hidden sm:block text-xs text-muted-foreground">
-                      {t('searchPage.pressToSearch')}
-                    </p>
-                  </div>
-                </>
+              {isAdmin && (
+                <AdvancedModelsDialog
+                  open={showAdvancedModels}
+                  onOpenChange={setShowAdvancedModels}
+                  defaultModels={{
+                    strategy: customModels?.strategy || modelDefaults?.default_chat_model || '',
+                    answer: customModels?.answer || modelDefaults?.default_chat_model || '',
+                    finalAnswer: customModels?.finalAnswer || modelDefaults?.default_chat_model || ''
+                  }}
+                  onSave={setCustomModels}
+                />
               )}
             </CardContent>
           </Card>
@@ -493,7 +304,7 @@ export default function SearchPage() {
                       key={prompt.key}
                       type="button"
                       onClick={() => handlePromptClick(text)}
-                      className="flex items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-left text-sm hover:border-primary/40 hover:bg-accent/50 transition-colors"
+                      className="flex min-h-11 items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-left text-sm hover:border-primary/40 hover:bg-accent/50 transition-colors"
                     >
                       <span className="text-foreground">{text}</span>
                       <ChevronDown className="h-4 w-4 -rotate-90 text-muted-foreground shrink-0" />
@@ -504,8 +315,8 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* Ask results */}
-          {isAsk && hasAskResult && (
+          {/* Answer — the primary panel */}
+          {!searchOnly && hasAskResult && (
             <div className="space-y-4">
               <StreamingResponse
                 isStreaming={ask.isStreaming}
@@ -516,28 +327,23 @@ export default function SearchPage() {
               {ask.finalAnswer && (
                 <Button variant="outline" onClick={() => setShowSaveDialog(true)}>
                   <Save className="h-4 w-4 mr-2" />
-                  {t('searchPage.saveToNotebooks')}
+                  {t('searchPage.saveToWorkspace')}
                 </Button>
               )}
             </div>
           )}
 
-          {/* Search results */}
-          {!isAsk && hasSearchResult && searchMutation.data && (
+          {/* Matching knowledge — quiet supporting list below the answer */}
+          {hasSearchResult && searchMutation.data && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium">
-                  {t('searchPage.resultsFound').replace('{count}', searchMutation.data.total_count.toString())}
-                </h3>
-                <Badge variant="outline">
-                  {searchMutation.data.search_type === 'text' ? t('searchPage.textSearch') : t('searchPage.vectorSearch')}
-                </Badge>
-              </div>
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                {t('searchPage.matchingKnowledge')}
+              </p>
 
               {searchMutation.data.results.length === 0 ? (
                 <Card>
-                  <CardContent className="pt-6 text-center text-muted-foreground">
-                    {t('searchPage.noResultsFor').replace('{query}', searchQuery)}
+                  <CardContent className="pt-6 text-center text-sm text-muted-foreground">
+                    {t('searchPage.noResultsFor').replace('{query}', submittedQuestion)}
                   </CardContent>
                 </Card>
               ) : (
@@ -551,31 +357,24 @@ export default function SearchPage() {
                     const modalType = type === 'source_insight' ? 'insight' : type as 'source' | 'note' | 'insight'
 
                     return (
-                      <Card key={index}>
-                        <CardContent className="pt-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <button
-                                onClick={() => openModal(modalType, id)}
-                                className="text-primary hover:underline font-medium"
-                              >
-                                {result.title}
-                              </button>
-                              <Badge variant="secondary" className="ml-2">
-                                {result.final_score.toFixed(2)}
-                              </Badge>
-                            </div>
-                          </div>
+                      <Card key={index} className="shadow-none">
+                        <CardContent className="py-3">
+                          <button
+                            onClick={() => openModal(modalType, id)}
+                            className="text-sm text-primary hover:underline font-medium text-left"
+                          >
+                            {result.title}
+                          </button>
 
                           {result.matches && result.matches.length > 0 && (
-                            <Collapsible className="mt-3">
-                              <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
-                                <ChevronDown className="h-4 w-4" />
+                            <Collapsible className="mt-2">
+                              <CollapsibleTrigger className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+                                <ChevronDown className="h-3.5 w-3.5" />
                                 {t('searchPage.matches').replace('{count}', result.matches.length.toString())}
                               </CollapsibleTrigger>
                               <CollapsibleContent className="mt-2 space-y-1">
                                 {result.matches.map((match, i) => (
-                                  <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted">
+                                  <div key={i} className="text-sm pl-6 py-1 border-l-2 border-muted text-muted-foreground">
                                     {match}
                                   </div>
                                 ))}
@@ -591,12 +390,12 @@ export default function SearchPage() {
             </div>
           )}
 
-          {/* Save to Notebooks Dialog */}
+          {/* Save to workspace dialog */}
           {ask.finalAnswer && (
             <SaveToNotebooksDialog
               open={showSaveDialog}
               onOpenChange={setShowSaveDialog}
-              question={askQuestion}
+              question={submittedQuestion || question}
               answer={ask.finalAnswer}
             />
           )}
