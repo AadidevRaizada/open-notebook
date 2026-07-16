@@ -110,6 +110,30 @@ export const jaJP = {
     removeMember: "削除",
     removeMemberConfirmTitle: "メンバーを削除しますか？",
     removeMemberConfirmDesc: "{email} を {org} から削除しますか？この組織のコンテンツにアクセスできなくなります。",
+
+    manageOrgs: "組織",
+
+    manageOrgsTitle: "組織を管理",
+
+    manageOrgsDesc: "{email} は複数の組織に同時に所属できます。所属はアクセスできるソースのみを変更します。アクティブな組織は上部バーから切り替えます。",
+
+    currentOrgs: "現在の組織",
+
+    currentOrgsEmpty: "まだどの組織にも所属していません。",
+
+    destinationOrg: "追加または移動先",
+
+    noAvailableOrgs: "このユーザーはすでにすべての組織に所属しています。",
+
+    membershipActionAdd: "追加 — 現在の組織を維持",
+
+    membershipActionMoveFrom: "{org} から移動",
+
+    applyMembership: "適用",
+
+    addedToOrg: "{org} に追加しました",
+
+    movedToOrg: "{org} に移動しました",
     actions: {
       sourceCreated: "ソース",
       noteCreated: "ノート",

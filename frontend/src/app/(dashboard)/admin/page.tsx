@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { AxiosError } from 'axios'
 import {
   Ban,
+  Building2,
   ChevronRight,
   Loader2,
   LogIn,
@@ -49,9 +50,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import type { AdminUser, AdminOrganization, OrgMember } from '@/lib/api/admin'
 import { cn } from '@/lib/utils'
 import {
+  useAddUserToOrganization,
   useAdminInvitations,
   useAdminOrganizations,
   useAdminStatus,
@@ -62,11 +72,13 @@ import {
   useDeleteUser,
   useInviteUser,
   useJoinOrganization,
+  useMoveUserBetweenOrganizations,
   useOrgMembers,
   useRemoveOrgMember,
   useRevokeInvitation,
   useSetOrgMemberRole,
   useSetUserRole,
+  useUserOrganizations,
 } from '@/lib/hooks/use-admin'
 import { useGmailAdminConnections } from '@/lib/hooks/use-gmail'
 
@@ -173,6 +185,7 @@ function UsersTab() {
   const { t } = useTranslation()
   const { data: status, isLoading: statusLoading } = useAdminStatus()
   const userManagement = status?.user_management ?? false
+  const superAdmin = status?.super_admin ?? false
   const { data: users, isLoading: usersLoading } = useAdminUsers(userManagement)
   const { data: invitations } = useAdminInvitations(userManagement)
   const { data: organizations } = useAdminOrganizations(userManagement)
@@ -186,6 +199,7 @@ function UsersTab() {
     type: 'delete' | 'ban'
     user: AdminUser
   } | null>(null)
+  const [manageOrgsUser, setManageOrgsUser] = useState<AdminUser | null>(null)
 
   const inviteUser = useInviteUser()
   const revokeInvitation = useRevokeInvitation()
@@ -379,6 +393,12 @@ function UsersTab() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {superAdmin && (
+                          <DropdownMenuItem onClick={() => setManageOrgsUser(user)}>
+                            <Building2 className="h-4 w-4 mr-2" />
+                            {t('adminPage.manageOrgs')}
+                          </DropdownMenuItem>
+                        )}
                         {user.role === 'admin' ? (
                           <DropdownMenuItem
                             onClick={() =>
@@ -468,7 +488,181 @@ function UsersTab() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {manageOrgsUser && (
+        <ManageUserOrgsDialog
+          user={manageOrgsUser}
+          organizations={organizations ?? []}
+          onClose={() => setManageOrgsUser(null)}
+        />
+      )}
     </>
+  )
+}
+
+/**
+ * Super-admin only: cross-organization membership for one user. A user can
+ * belong to several organizations at once — membership only controls which
+ * org's sources they can reach; they pick the active org from the top bar.
+ * "Add" grants an additional membership; "Move from X" adds to the
+ * destination first, then removes from X (so a failure can't strand them).
+ */
+function ManageUserOrgsDialog({
+  user,
+  organizations,
+  onClose,
+}: {
+  user: AdminUser
+  organizations: AdminOrganization[]
+  onClose: () => void
+}) {
+  const { t } = useTranslation()
+  const { data: memberships, isLoading } = useUserOrganizations(user.id)
+  const addToOrg = useAddUserToOrganization()
+  const moveUser = useMoveUserBetweenOrganizations()
+
+  const [destinationId, setDestinationId] = useState('')
+  const [role, setRole] = useState<'org:admin' | 'org:member'>('org:member')
+  // 'add' keeps existing memberships; an org id means "move from that org".
+  const [action, setAction] = useState('add')
+
+  const memberOrgIds = new Set((memberships ?? []).map((m) => m.organization_id))
+  const availableOrgs = organizations.filter((org) => !memberOrgIds.has(org.id))
+  const orgName = (id: string) =>
+    organizations.find((o) => o.id === id)?.name ??
+    (memberships ?? []).find((m) => m.organization_id === id)?.organization_name ??
+    id
+  const destinationName = destinationId ? orgName(destinationId) : ''
+  const isPending = addToOrg.isPending || moveUser.isPending
+
+  const handleApply = () => {
+    if (!destinationId) return
+    const callbacks = {
+      onSuccess: () => {
+        toast.success(
+          (action === 'add' ? t('adminPage.addedToOrg') : t('adminPage.movedToOrg')).replace(
+            '{org}',
+            destinationName
+          )
+        )
+        setDestinationId('')
+        setAction('add')
+      },
+      onError: (error: unknown) =>
+        toast.error(errorDetail(error) ?? t('adminPage.actionError')),
+    }
+    if (action === 'add') {
+      addToOrg.mutate({ userId: user.id, organizationId: destinationId, role }, callbacks)
+    } else {
+      moveUser.mutate(
+        { userId: user.id, fromOrganizationId: action, toOrganizationId: destinationId, role },
+        callbacks
+      )
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t('adminPage.manageOrgsTitle')}</DialogTitle>
+          <DialogDescription>
+            {t('adminPage.manageOrgsDesc').replace('{email}', user.email ?? user.id)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">{t('adminPage.currentOrgs')}</h3>
+            {isLoading ? (
+              <div className="flex justify-center py-2">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : (memberships ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('adminPage.currentOrgsEmpty')}</p>
+            ) : (
+              <div className="space-y-1">
+                {(memberships ?? []).map((m) => (
+                  <div
+                    key={m.organization_id}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      {m.organization_name ?? m.organization_id}
+                    </span>
+                    <Badge variant="outline">
+                      {m.role === 'org:admin'
+                        ? t('adminPage.orgRoleAdmin')
+                        : t('adminPage.orgRoleMember')}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {availableOrgs.length === 0 && !isLoading ? (
+            <p className="text-sm text-muted-foreground">{t('adminPage.noAvailableOrgs')}</p>
+          ) : (
+            <div className="space-y-2">
+              <h3 className="text-sm font-medium">{t('adminPage.destinationOrg')}</h3>
+              <div className="flex flex-wrap gap-2">
+                <Select value={destinationId} onValueChange={setDestinationId}>
+                  <SelectTrigger className="w-full sm:w-56">
+                    <SelectValue placeholder={t('adminPage.selectOrganization')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableOrgs.map((org) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={role}
+                  onValueChange={(v) => setRole(v as 'org:admin' | 'org:member')}
+                >
+                  <SelectTrigger className="w-full sm:w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="org:member">{t('adminPage.orgRoleMember')}</SelectItem>
+                    <SelectItem value="org:admin">{t('adminPage.orgRoleAdmin')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Select value={action} onValueChange={setAction}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add">{t('adminPage.membershipActionAdd')}</SelectItem>
+                  {(memberships ?? []).map((m) => (
+                    <SelectItem key={m.organization_id} value={m.organization_id}>
+                      {t('adminPage.membershipActionMoveFrom').replace(
+                        '{org}',
+                        m.organization_name ?? m.organization_id
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button onClick={handleApply} disabled={!destinationId || isPending}>
+            {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            {t('adminPage.applyMembership')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

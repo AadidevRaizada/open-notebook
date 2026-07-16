@@ -110,6 +110,30 @@ export const frFR = {
     removeMember: "Retirer",
     removeMemberConfirmTitle: "Retirer le membre ?",
     removeMemberConfirmDesc: "Retirer {email} de {org} ? Cette personne perdra l'accès au contenu de cette organisation.",
+
+    manageOrgs: "Organisations",
+
+    manageOrgsTitle: "Gérer les organisations",
+
+    manageOrgsDesc: "{email} peut appartenir à plusieurs organisations à la fois. L'appartenance ne change que l'accès aux sources — l'organisation active se change depuis la barre supérieure.",
+
+    currentOrgs: "Organisations actuelles",
+
+    currentOrgsEmpty: "Pas encore membre d'une organisation.",
+
+    destinationOrg: "Ajouter ou déplacer vers",
+
+    noAvailableOrgs: "Cet utilisateur appartient déjà à toutes les organisations.",
+
+    membershipActionAdd: "Ajouter — conserver les organisations actuelles",
+
+    membershipActionMoveFrom: "Déplacer depuis {org}",
+
+    applyMembership: "Appliquer",
+
+    addedToOrg: "Ajouté à {org}",
+
+    movedToOrg: "Déplacé vers {org}",
     actions: {
       sourceCreated: "Sources",
       noteCreated: "Notes",

@@ -89,6 +89,11 @@ async def list_users(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
     return [_slim_user(u) for u in users or []]
 
 
+async def get_user(user_id: str) -> Dict[str, Any]:
+    """Fetch a single user (slim shape). Used to resolve email/role by id."""
+    return _slim_user(await _request("GET", f"/users/{user_id}"))
+
+
 async def create_invitation(email: str, redirect_url: Optional[str] = None) -> Dict[str, Any]:
     body: Dict[str, Any] = {"email_address": email, "notify": True}
     if redirect_url:
@@ -205,6 +210,30 @@ async def remove_organization_membership(
     await _request(
         "DELETE", f"/organizations/{organization_id}/memberships/{user_id}"
     )
+
+
+def _slim_user_org_membership(m: Dict[str, Any]) -> Dict[str, Any]:
+    """One organization a given user belongs to (from the user-centric list)."""
+    org = m.get("organization") or {}
+    return {
+        "organization_id": org.get("id"),
+        "organization_name": org.get("name"),
+        "role": m.get("role"),
+        "created_at": m.get("created_at"),
+    }
+
+
+async def list_user_organization_memberships(
+    user_id: str, limit: int = 100, offset: int = 0
+) -> List[Dict[str, Any]]:
+    """Every organization a user belongs to (drives the cross-org admin view)."""
+    result = await _request(
+        "GET",
+        f"/users/{user_id}/organization_memberships",
+        params={"limit": limit, "offset": offset},
+    )
+    data = result.get("data", []) if isinstance(result, dict) else (result or [])
+    return [_slim_user_org_membership(m) for m in data]
 
 
 def _slim_org_invitation(invitation: Dict[str, Any], org_name: Optional[str] = None) -> Dict[str, Any]:

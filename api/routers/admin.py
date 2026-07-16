@@ -15,7 +15,7 @@ from loguru import logger
 from pydantic import BaseModel, EmailStr
 
 from api import clerk_client
-from api.auth import get_auth_mode, require_admin
+from api.auth import get_auth_mode, is_super_admin, require_admin, require_super_admin
 from open_notebook.database.repository import repo_query
 
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -57,11 +57,14 @@ def _ensure_not_self(request: Request, user_id: str) -> None:
 
 
 @router.get("/admin/status")
-async def admin_status() -> Dict[str, Any]:
+async def admin_status(request: Request) -> Dict[str, Any]:
     """Lets the admin UI know which capabilities are available."""
     return {
         "auth_mode": get_auth_mode(),
         "user_management": clerk_client.is_clerk_admin_configured(),
+        # Whether the current user may perform cross-organization actions
+        # (add an existing user to another org / move between orgs).
+        "super_admin": await is_super_admin(request),
     }
 
 
@@ -121,6 +124,95 @@ async def remove_organization_member(
 ) -> Dict[str, Any]:
     await clerk_client.remove_organization_membership(organization_id, user_id)
     return {"removed": True}
+
+
+# --------------------------------------------------------------------------
+# Cross-organization membership (super-admin only)
+# --------------------------------------------------------------------------
+# A user can belong to several organizations at once; switching their active
+# org only changes which org's sources they can reach. These endpoints reshape
+# membership *across* orgs, so they are restricted to the super administrator.
+
+
+class AddUserToOrgRequest(BaseModel):
+    organization_id: str
+    role: Literal["org:admin", "org:member"] = "org:member"
+
+
+class MoveUserRequest(BaseModel):
+    from_organization_id: str
+    to_organization_id: str
+    # Role to grant in the destination org.
+    role: Literal["org:admin", "org:member"] = "org:member"
+
+
+@router.get(
+    "/admin/users/{user_id}/organizations",
+    dependencies=[Depends(require_super_admin)],
+)
+async def list_user_organizations(user_id: str) -> List[Dict[str, Any]]:
+    """Every organization a user currently belongs to."""
+    return await clerk_client.list_user_organization_memberships(user_id)
+
+
+@router.post(
+    "/admin/users/{user_id}/organizations",
+    dependencies=[Depends(require_super_admin)],
+)
+async def add_user_to_organization(
+    user_id: str, payload: AddUserToOrgRequest
+) -> Dict[str, Any]:
+    """
+    Add an existing user to another organization **without** removing them from
+    any org they already belong to (multi-org membership). Clerk returns a
+    descriptive 4xx if the user is already a member of that org.
+    """
+    await clerk_client.add_organization_membership(
+        payload.organization_id, user_id, role=payload.role
+    )
+    logger.info(
+        f"Super-admin added user {user_id} to org {payload.organization_id} "
+        f"as {payload.role}"
+    )
+    return {"added": True, "organization_id": payload.organization_id}
+
+
+@router.post(
+    "/admin/users/{user_id}/organizations/move",
+    dependencies=[Depends(require_super_admin)],
+)
+async def move_user_between_organizations(
+    user_id: str, payload: MoveUserRequest, request: Request
+) -> Dict[str, Any]:
+    """
+    Move a user from one organization to another: add to the destination first,
+    then remove from the source. Adding first means a failure can't strand the
+    user with no organization (which would lock them out of the app).
+    """
+    if payload.from_organization_id == payload.to_organization_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Source and destination organizations must be different",
+        )
+    # Guard against the super-admin removing themselves from their active org
+    # mid-session (which would break their own access).
+    _ensure_not_self(request, user_id)
+
+    await clerk_client.add_organization_membership(
+        payload.to_organization_id, user_id, role=payload.role
+    )
+    await clerk_client.remove_organization_membership(
+        payload.from_organization_id, user_id
+    )
+    logger.info(
+        f"Super-admin moved user {user_id} from org "
+        f"{payload.from_organization_id} to {payload.to_organization_id}"
+    )
+    return {
+        "moved": True,
+        "from_organization_id": payload.from_organization_id,
+        "to_organization_id": payload.to_organization_id,
+    }
 
 
 @router.get("/admin/invitations")

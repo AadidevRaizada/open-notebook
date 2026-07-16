@@ -110,6 +110,30 @@ export const enUS = {
     removeMember: "Remove",
     removeMemberConfirmTitle: "Remove member?",
     removeMemberConfirmDesc: "Remove {email} from {org}? They lose access to this organization's content.",
+
+    manageOrgs: "Departments",
+
+    manageOrgsTitle: "Manage departments",
+
+    manageOrgsDesc: "{email} can belong to several departments at once. Membership only changes which department's sources they can access — they switch the active department from the top bar.",
+
+    currentOrgs: "Current departments",
+
+    currentOrgsEmpty: "Not a member of any department yet.",
+
+    destinationOrg: "Add or move to",
+
+    noAvailableOrgs: "This user already belongs to every department.",
+
+    membershipActionAdd: "Add — keep current departments",
+
+    membershipActionMoveFrom: "Move from {org}",
+
+    applyMembership: "Apply",
+
+    addedToOrg: "Added to {org}",
+
+    movedToOrg: "Moved to {org}",
     actions: {
       sourceCreated: "Sources",
       noteCreated: "Notes",

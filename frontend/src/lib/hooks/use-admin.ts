@@ -129,6 +129,61 @@ export function useSetOrgMemberRole() {
   })
 }
 
+// ---- Cross-organization membership (super-admin only) ----
+
+export function useUserOrganizations(userId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [...ADMIN_QUERY_KEYS.users, userId, 'organizations'] as const,
+    queryFn: () => adminApi.listUserOrganizations(userId as string),
+    enabled: enabled && !!userId,
+  })
+}
+
+export function useAddUserToOrganization() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      userId,
+      organizationId,
+      role,
+    }: {
+      userId: string
+      organizationId: string
+      role?: 'org:admin' | 'org:member'
+    }) => adminApi.addUserToOrganization(userId, organizationId, role),
+    onSuccess: (_data, { userId }) => {
+      queryClient.invalidateQueries({
+        queryKey: [...ADMIN_QUERY_KEYS.users, userId, 'organizations'],
+      })
+      queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEYS.organizations })
+    },
+  })
+}
+
+export function useMoveUserBetweenOrganizations() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      userId,
+      fromOrganizationId,
+      toOrganizationId,
+      role,
+    }: {
+      userId: string
+      fromOrganizationId: string
+      toOrganizationId: string
+      role?: 'org:admin' | 'org:member'
+    }) =>
+      adminApi.moveUserBetweenOrganizations(userId, fromOrganizationId, toOrganizationId, role),
+    onSuccess: (_data, { userId }) => {
+      queryClient.invalidateQueries({
+        queryKey: [...ADMIN_QUERY_KEYS.users, userId, 'organizations'],
+      })
+      queryClient.invalidateQueries({ queryKey: ADMIN_QUERY_KEYS.organizations })
+    },
+  })
+}
+
 export function useRemoveOrgMember() {
   const queryClient = useQueryClient()
   return useMutation({

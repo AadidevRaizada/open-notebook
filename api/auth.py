@@ -232,6 +232,77 @@ def require_admin(request: Request) -> bool:
     return True
 
 
+# Super-admin: a narrow allowlist (default info@ahumlabs.com) that gates the
+# most sensitive, cross-tenant operations — e.g. adding an existing user into a
+# second organization or moving them between organizations. A regular org admin
+# can manage members *within* an org; only a super-admin reshapes membership
+# *across* orgs. Configurable via SUPER_ADMIN_EMAILS (comma-separated).
+DEFAULT_SUPER_ADMIN_EMAIL = "info@ahumlabs.com"
+
+
+def get_super_admin_emails() -> set[str]:
+    raw = os.environ.get("SUPER_ADMIN_EMAILS", DEFAULT_SUPER_ADMIN_EMAIL)
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+async def _resolve_user_email(request: Request) -> Optional[str]:
+    """
+    Best-effort email for the signed-in user.
+
+    Prefer the JWT email claim; if the session token doesn't carry one (Clerk
+    session tokens omit it unless the template adds it), fall back to a Clerk
+    Backend API lookup by user id. Returns None if it can't be resolved.
+    """
+    user = getattr(request.state, "user", None) or {}
+    email = user.get("email")
+    if email:
+        return email
+    sub = user.get("id")
+    if not sub:
+        return None
+    try:
+        from api import clerk_client
+
+        if clerk_client.is_clerk_admin_configured():
+            resolved = await clerk_client.get_user(sub)
+            return (resolved or {}).get("email")
+    except Exception as e:  # never let a lookup failure crash the request
+        logger.warning(f"Super-admin email lookup failed: {e}")
+    return None
+
+
+async def require_super_admin(request: Request) -> bool:
+    """
+    FastAPI dependency restricting an endpoint to a super administrator.
+
+    In password/none mode there is a single operator, so it is allowed
+    (mirrors require_admin). In Clerk mode the user must be an admin *and* their
+    email must be in the SUPER_ADMIN_EMAILS allowlist.
+    """
+    if get_auth_mode() != "clerk":
+        return True
+
+    user = getattr(request.state, "user", None)
+    if not user or user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+
+    email = (await _resolve_user_email(request) or "").lower()
+    if email not in get_super_admin_emails():
+        raise HTTPException(
+            status_code=403,
+            detail="This action is restricted to the super administrator",
+        )
+    return True
+
+
+async def is_super_admin(request: Request) -> bool:
+    """Non-raising variant for capability flags (e.g. /admin/status)."""
+    try:
+        return bool(await require_super_admin(request))
+    except HTTPException:
+        return False
+
+
 # Optional: HTTPBearer security scheme for OpenAPI documentation
 security = HTTPBearer(auto_error=False)
 

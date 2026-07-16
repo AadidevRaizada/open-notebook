@@ -56,9 +56,12 @@ export function AppHeader({ onOpenMobileNav }: AppHeaderProps) {
           </kbd>
         </Button>
 
-        {/* Org switcher: admins only — members belong to exactly one org.
-            Switch only; managing orgs/members happens via the account menu. */}
-        {isClerkEnabled && isAdmin && (
+        {/* Org switcher for every Clerk user: with multi-org membership a
+            member can belong to several orgs; switching only changes which
+            org's sources they can reach. Clerk renders it as a plain label
+            when the user belongs to a single org. Switch only; managing
+            orgs/members happens via the account menu (admins). */}
+        {isClerkEnabled && (
           <OrganizationSwitcher
             hidePersonal
             afterSelectOrganizationUrl="/home"

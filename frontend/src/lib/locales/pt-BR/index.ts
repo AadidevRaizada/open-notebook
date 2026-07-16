@@ -110,6 +110,30 @@ export const ptBR = {
     removeMember: "Remover",
     removeMemberConfirmTitle: "Remover membro?",
     removeMemberConfirmDesc: "Remover {email} de {org}? Ele perderá o acesso ao conteúdo desta organização.",
+
+    manageOrgs: "Organizações",
+
+    manageOrgsTitle: "Gerenciar organizações",
+
+    manageOrgsDesc: "{email} pode pertencer a várias organizações ao mesmo tempo. A associação muda apenas quais fontes ele pode acessar — a organização ativa é trocada na barra superior.",
+
+    currentOrgs: "Organizações atuais",
+
+    currentOrgsEmpty: "Ainda não é membro de nenhuma organização.",
+
+    destinationOrg: "Adicionar ou mover para",
+
+    noAvailableOrgs: "Este usuário já pertence a todas as organizações.",
+
+    membershipActionAdd: "Adicionar — manter as organizações atuais",
+
+    membershipActionMoveFrom: "Mover de {org}",
+
+    applyMembership: "Aplicar",
+
+    addedToOrg: "Adicionado a {org}",
+
+    movedToOrg: "Movido para {org}",
     actions: {
       sourceCreated: "Fontes",
       noteCreated: "Notas",

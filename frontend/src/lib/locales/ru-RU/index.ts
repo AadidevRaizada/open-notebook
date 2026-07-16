@@ -110,6 +110,30 @@ export const ruRU = {
     removeMember: "Удалить",
     removeMemberConfirmTitle: "Удалить участника?",
     removeMemberConfirmDesc: "Удалить {email} из {org}? Он потеряет доступ к содержимому этой организации.",
+
+    manageOrgs: "Организации",
+
+    manageOrgsTitle: "Управление организациями",
+
+    manageOrgsDesc: "{email} может состоять в нескольких организациях одновременно. Членство меняет только доступ к источникам — активная организация переключается в верхней панели.",
+
+    currentOrgs: "Текущие организации",
+
+    currentOrgsEmpty: "Пока не состоит ни в одной организации.",
+
+    destinationOrg: "Добавить или переместить в",
+
+    noAvailableOrgs: "Этот пользователь уже состоит во всех организациях.",
+
+    membershipActionAdd: "Добавить — сохранить текущие организации",
+
+    membershipActionMoveFrom: "Переместить из {org}",
+
+    applyMembership: "Применить",
+
+    addedToOrg: "Добавлен в {org}",
+
+    movedToOrg: "Перемещён в {org}",
     actions: {
       sourceCreated: "Источники",
       noteCreated: "Заметки",

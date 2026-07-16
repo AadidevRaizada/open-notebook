@@ -110,6 +110,30 @@ export const caES = {
     removeMember: "Elimina",
     removeMemberConfirmTitle: "Voleu eliminar el membre?",
     removeMemberConfirmDesc: "Voleu eliminar {email} de {org}? Perdrà l'accés al contingut d'aquesta organització.",
+
+    manageOrgs: "Organitzacions",
+
+    manageOrgsTitle: "Gestiona les organitzacions",
+
+    manageOrgsDesc: "{email} pot pertànyer a diverses organitzacions alhora. La pertinença només canvia a quines fonts té accés — l'organització activa es canvia des de la barra superior.",
+
+    currentOrgs: "Organitzacions actuals",
+
+    currentOrgsEmpty: "Encara no és membre de cap organització.",
+
+    destinationOrg: "Afegeix o mou a",
+
+    noAvailableOrgs: "Aquest usuari ja pertany a totes les organitzacions.",
+
+    membershipActionAdd: "Afegeix — mantén les organitzacions actuals",
+
+    membershipActionMoveFrom: "Mou des de {org}",
+
+    applyMembership: "Aplica",
+
+    addedToOrg: "Afegit a {org}",
+
+    movedToOrg: "Mogut a {org}",
     actions: {
       sourceCreated: "Fonts",
       noteCreated: "Notes",

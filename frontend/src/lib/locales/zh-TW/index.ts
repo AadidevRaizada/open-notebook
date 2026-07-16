@@ -110,6 +110,30 @@ export const zhTW = {
     removeMember: "移除",
     removeMemberConfirmTitle: "移除成員？",
     removeMemberConfirmDesc: "將 {email} 從 {org} 中移除？該成員將失去對此組織內容的存取權限。",
+
+    manageOrgs: "組織",
+
+    manageOrgsTitle: "管理組織",
+
+    manageOrgsDesc: "{email} 可以同時屬於多個組織。成員身分僅決定可存取哪些組織的資源 — 可在頂部列切換目前組織。",
+
+    currentOrgs: "目前組織",
+
+    currentOrgsEmpty: "尚未加入任何組織。",
+
+    destinationOrg: "新增或移動到",
+
+    noAvailableOrgs: "該使用者已加入所有組織。",
+
+    membershipActionAdd: "新增 — 保留目前組織",
+
+    membershipActionMoveFrom: "從 {org} 移動",
+
+    applyMembership: "套用",
+
+    addedToOrg: "已新增到 {org}",
+
+    movedToOrg: "已移動到 {org}",
     actions: {
       sourceCreated: "來源",
       noteCreated: "筆記",

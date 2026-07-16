@@ -51,6 +51,17 @@ export interface InviteUserInput {
 export interface AdminStatus {
   auth_mode: 'clerk' | 'password' | 'none'
   user_management: boolean
+  // Whether the current user may perform cross-organization actions
+  // (add an existing user to another org / move between orgs).
+  super_admin: boolean
+}
+
+// One organization a given user belongs to (user-centric view).
+export interface UserOrgMembership {
+  organization_id: string
+  organization_name: string | null
+  role: string
+  created_at: number | null
 }
 
 export interface UsageUser {
@@ -111,6 +122,41 @@ export const adminApi = {
   removeOrgMember: async (organizationId: string, userId: string): Promise<void> => {
     await apiClient.delete(`/admin/organizations/${organizationId}/members/${userId}`)
   },
+
+  // ---- Cross-organization membership (super-admin only) ----
+
+  listUserOrganizations: async (userId: string): Promise<UserOrgMembership[]> =>
+    (await apiClient.get<UserOrgMembership[]>(`/admin/users/${userId}/organizations`)).data,
+
+  addUserToOrganization: async (
+    userId: string,
+    organizationId: string,
+    role: 'org:admin' | 'org:member' = 'org:member'
+  ): Promise<{ added: boolean; organization_id: string }> =>
+    (
+      await apiClient.post<{ added: boolean; organization_id: string }>(
+        `/admin/users/${userId}/organizations`,
+        { organization_id: organizationId, role }
+      )
+    ).data,
+
+  moveUserBetweenOrganizations: async (
+    userId: string,
+    fromOrganizationId: string,
+    toOrganizationId: string,
+    role: 'org:admin' | 'org:member' = 'org:member'
+  ): Promise<{ moved: boolean; from_organization_id: string; to_organization_id: string }> =>
+    (
+      await apiClient.post<{
+        moved: boolean
+        from_organization_id: string
+        to_organization_id: string
+      }>(`/admin/users/${userId}/organizations/move`, {
+        from_organization_id: fromOrganizationId,
+        to_organization_id: toOrganizationId,
+        role,
+      })
+    ).data,
 
   inviteUser: async ({ email, organizationName, organizationId }: InviteUserInput): Promise<AdminInvitation> =>
     (

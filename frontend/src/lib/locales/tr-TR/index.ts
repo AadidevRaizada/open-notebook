@@ -110,6 +110,30 @@ export const trTR = {
     removeMember: "Kaldır",
     removeMemberConfirmTitle: "Üye kaldırılsın mı?",
     removeMemberConfirmDesc: "{email} kullanıcısını {org} kuruluşundan kaldır? Bu kuruluşun içeriğine erişimini kaybeder.",
+
+    manageOrgs: "Kuruluşlar",
+
+    manageOrgsTitle: "Kuruluşları yönet",
+
+    manageOrgsDesc: "{email} aynı anda birden fazla kuruluşa üye olabilir. Üyelik yalnızca hangi kaynaklara erişebileceğini değiştirir — etkin kuruluş üst çubuktan değiştirilir.",
+
+    currentOrgs: "Mevcut kuruluşlar",
+
+    currentOrgsEmpty: "Henüz hiçbir kuruluşa üye değil.",
+
+    destinationOrg: "Ekle veya taşı",
+
+    noAvailableOrgs: "Bu kullanıcı zaten tüm kuruluşlara üye.",
+
+    membershipActionAdd: "Ekle — mevcut kuruluşları koru",
+
+    membershipActionMoveFrom: "{org} kuruluşundan taşı",
+
+    applyMembership: "Uygula",
+
+    addedToOrg: "{org} kuruluşuna eklendi",
+
+    movedToOrg: "{org} kuruluşuna taşındı",
     actions: {
       sourceCreated: "Kaynaklar",
       noteCreated: "Notlar",

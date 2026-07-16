@@ -110,6 +110,30 @@ export const bnIN = {
     removeMember: "সরান",
     removeMemberConfirmTitle: "সদস্য সরাবেন?",
     removeMemberConfirmDesc: "{org} থেকে {email}-কে সরাবেন? তিনি এই সংস্থার কন্টেন্টে অ্যাক্সেস হারাবেন।",
+
+    manageOrgs: "সংস্থাসমূহ",
+
+    manageOrgsTitle: "সংস্থা পরিচালনা করুন",
+
+    manageOrgsDesc: "{email} একসাথে একাধিক সংস্থার সদস্য হতে পারেন। সদস্যপদ শুধুমাত্র কোন সংস্থার সোর্সে অ্যাক্সেস আছে তা নির্ধারণ করে — উপরের বার থেকে সক্রিয় সংস্থা পরিবর্তন করা যায়।",
+
+    currentOrgs: "বর্তমান সংস্থাসমূহ",
+
+    currentOrgsEmpty: "এখনও কোনো সংস্থার সদস্য নন।",
+
+    destinationOrg: "যোগ করুন বা সরান",
+
+    noAvailableOrgs: "এই ব্যবহারকারী ইতিমধ্যে সব সংস্থার সদস্য।",
+
+    membershipActionAdd: "যোগ করুন — বর্তমান সংস্থাগুলি রাখুন",
+
+    membershipActionMoveFrom: "{org} থেকে সরান",
+
+    applyMembership: "প্রয়োগ করুন",
+
+    addedToOrg: "{org}-এ যোগ করা হয়েছে",
+
+    movedToOrg: "{org}-এ সরানো হয়েছে",
     actions: {
       sourceCreated: "উৎস",
       noteCreated: "নোট",

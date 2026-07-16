@@ -110,6 +110,30 @@ export const itIT = {
     removeMember: "Rimuovi",
     removeMemberConfirmTitle: "Rimuovere il membro?",
     removeMemberConfirmDesc: "Rimuovere {email} da {org}? Perderà l'accesso ai contenuti di questa organizzazione.",
+
+    manageOrgs: "Organizzazioni",
+
+    manageOrgsTitle: "Gestisci organizzazioni",
+
+    manageOrgsDesc: "{email} può appartenere a più organizzazioni contemporaneamente. L'appartenenza cambia solo le fonti a cui ha accesso — l'organizzazione attiva si cambia dalla barra in alto.",
+
+    currentOrgs: "Organizzazioni attuali",
+
+    currentOrgsEmpty: "Non è ancora membro di alcuna organizzazione.",
+
+    destinationOrg: "Aggiungi o sposta in",
+
+    noAvailableOrgs: "Questo utente appartiene già a tutte le organizzazioni.",
+
+    membershipActionAdd: "Aggiungi — mantieni le organizzazioni attuali",
+
+    membershipActionMoveFrom: "Sposta da {org}",
+
+    applyMembership: "Applica",
+
+    addedToOrg: "Aggiunto a {org}",
+
+    movedToOrg: "Spostato in {org}",
     actions: {
       sourceCreated: "Fonti",
       noteCreated: "Note",

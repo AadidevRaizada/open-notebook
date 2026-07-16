@@ -113,6 +113,30 @@ export const deDE = {
     removeMember: "Entfernen",
     removeMemberConfirmTitle: "Mitglied entfernen?",
     removeMemberConfirmDesc: "{email} aus {org} entfernen? Der Zugriff auf die Inhalte dieser Organisation geht verloren.",
+
+    manageOrgs: "Organisationen",
+
+    manageOrgsTitle: "Organisationen verwalten",
+
+    manageOrgsDesc: "{email} kann mehreren Organisationen gleichzeitig angehören. Die Mitgliedschaft bestimmt nur, auf welche Quellen zugegriffen werden kann — die aktive Organisation wird über die obere Leiste gewechselt.",
+
+    currentOrgs: "Aktuelle Organisationen",
+
+    currentOrgsEmpty: "Noch kein Mitglied einer Organisation.",
+
+    destinationOrg: "Hinzufügen oder verschieben nach",
+
+    noAvailableOrgs: "Diese Person gehört bereits allen Organisationen an.",
+
+    membershipActionAdd: "Hinzufügen — aktuelle Organisationen behalten",
+
+    membershipActionMoveFrom: "Verschieben aus {org}",
+
+    applyMembership: "Anwenden",
+
+    addedToOrg: "Zu {org} hinzugefügt",
+
+    movedToOrg: "Nach {org} verschoben",
     actions: {
       sourceCreated: "Quellen",
       noteCreated: "Notizen",

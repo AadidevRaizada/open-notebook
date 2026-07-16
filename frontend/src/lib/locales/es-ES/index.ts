@@ -110,6 +110,30 @@ export const esES = {
     removeMember: "Eliminar",
     removeMemberConfirmTitle: "¿Eliminar miembro?",
     removeMemberConfirmDesc: "¿Eliminar a {email} de {org}? Perderá el acceso al contenido de esta organización.",
+
+    manageOrgs: "Organizaciones",
+
+    manageOrgsTitle: "Gestionar organizaciones",
+
+    manageOrgsDesc: "{email} puede pertenecer a varias organizaciones a la vez. La pertenencia solo cambia a qué fuentes tiene acceso — la organización activa se cambia desde la barra superior.",
+
+    currentOrgs: "Organizaciones actuales",
+
+    currentOrgsEmpty: "Aún no es miembro de ninguna organización.",
+
+    destinationOrg: "Añadir o mover a",
+
+    noAvailableOrgs: "Este usuario ya pertenece a todas las organizaciones.",
+
+    membershipActionAdd: "Añadir — mantener las organizaciones actuales",
+
+    membershipActionMoveFrom: "Mover desde {org}",
+
+    applyMembership: "Aplicar",
+
+    addedToOrg: "Añadido a {org}",
+
+    movedToOrg: "Movido a {org}",
     actions: {
       sourceCreated: "Fuentes",
       noteCreated: "Notas",

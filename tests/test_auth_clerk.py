@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.testclient import TestClient
 
 import api.auth as auth_module
-from api.auth import PasswordAuthMiddleware, require_admin
+from api.auth import PasswordAuthMiddleware, require_admin, require_super_admin
 
 ISSUER = "https://test-instance.clerk.accounts.dev"
 
@@ -31,6 +31,7 @@ def make_token(
     org_id="org_test123",
     org_role="org:admin",
     nested_org=False,
+    email=None,
 ):
     now = int(time.time())
     claims = {
@@ -41,6 +42,8 @@ def make_token(
     }
     if role is not None:
         claims["role"] = role
+    if email is not None:
+        claims["email"] = email
     if org_id is not None:
         if nested_org:
             # Clerk default v2 session token shape: org info nested under "o".
@@ -84,6 +87,10 @@ def client(monkeypatch):
 
     @app.get("/admin-only", dependencies=[Depends(require_admin)])
     async def admin_only():
+        return {"ok": True}
+
+    @app.get("/super-only", dependencies=[Depends(require_super_admin)])
+    async def super_only():
         return {"ok": True}
 
     return TestClient(app)
@@ -186,6 +193,10 @@ class TestPasswordModeCompatibility:
         async def admin_only():
             return {"ok": True}
 
+        @app.get("/super-only", dependencies=[Depends(require_super_admin)])
+        async def super_only():
+            return {"ok": True}
+
         return TestClient(app)
 
     def test_correct_password_accepted(self, password_client):
@@ -199,3 +210,49 @@ class TestPasswordModeCompatibility:
     def test_admin_routes_open_in_password_mode(self, password_client):
         r = password_client.get("/admin-only", headers=auth_header("s3cret"))
         assert r.status_code == 200
+
+    def test_super_routes_open_in_password_mode(self, password_client):
+        # Single operator in password mode is implicitly the super-admin.
+        r = password_client.get("/super-only", headers=auth_header("s3cret"))
+        assert r.status_code == 200
+
+
+class TestSuperAdminEnforcement:
+    """Cross-org actions are limited to the SUPER_ADMIN_EMAILS allowlist."""
+
+    def test_allowlisted_admin_allowed(self, client, monkeypatch):
+        monkeypatch.setenv("SUPER_ADMIN_EMAILS", "info@ahumlabs.com")
+        token = make_token(role="admin", email="info@ahumlabs.com")
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 200
+
+    def test_allowlist_is_case_insensitive(self, client, monkeypatch):
+        monkeypatch.setenv("SUPER_ADMIN_EMAILS", "info@ahumlabs.com")
+        token = make_token(role="admin", email="INFO@AhumLabs.com")
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 200
+
+    def test_default_allowlist_is_info_ahumlabs(self, client, monkeypatch):
+        monkeypatch.delenv("SUPER_ADMIN_EMAILS", raising=False)
+        token = make_token(role="admin", email="info@ahumlabs.com")
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 200
+
+    def test_non_allowlisted_admin_forbidden(self, client, monkeypatch):
+        monkeypatch.setenv("SUPER_ADMIN_EMAILS", "info@ahumlabs.com")
+        token = make_token(role="admin", email="someone.else@example.com")
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 403
+
+    def test_admin_without_email_claim_forbidden(self, client, monkeypatch):
+        # No email claim and no Clerk secret configured -> cannot resolve -> 403.
+        monkeypatch.setenv("SUPER_ADMIN_EMAILS", "info@ahumlabs.com")
+        monkeypatch.delenv("CLERK_SECRET_KEY", raising=False)
+        token = make_token(role="admin")
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 403
+
+    def test_regular_user_forbidden(self, client, monkeypatch):
+        monkeypatch.setenv("SUPER_ADMIN_EMAILS", "info@ahumlabs.com")
+        token = make_token(email="info@ahumlabs.com")  # no admin role
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 403
+
+    def test_custom_allowlist_multiple_emails(self, client, monkeypatch):
+        monkeypatch.setenv("SUPER_ADMIN_EMAILS", "a@x.com, b@y.com")
+        token = make_token(role="admin", email="b@y.com")
+        assert client.get("/super-only", headers=auth_header(token)).status_code == 200

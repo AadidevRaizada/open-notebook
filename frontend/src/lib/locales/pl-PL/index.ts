@@ -110,6 +110,30 @@ export const plPL = {
     removeMember: "Usuń",
     removeMemberConfirmTitle: "Usunąć członka?",
     removeMemberConfirmDesc: "Usunąć {email} z {org}? Utraci dostęp do treści tej organizacji.",
+
+    manageOrgs: "Organizacje",
+
+    manageOrgsTitle: "Zarządzaj organizacjami",
+
+    manageOrgsDesc: "{email} może należeć do kilku organizacji jednocześnie. Członkostwo zmienia tylko dostęp do źródeł — aktywną organizację zmienia się na górnym pasku.",
+
+    currentOrgs: "Obecne organizacje",
+
+    currentOrgsEmpty: "Nie należy jeszcze do żadnej organizacji.",
+
+    destinationOrg: "Dodaj lub przenieś do",
+
+    noAvailableOrgs: "Ten użytkownik należy już do wszystkich organizacji.",
+
+    membershipActionAdd: "Dodaj — zachowaj obecne organizacje",
+
+    membershipActionMoveFrom: "Przenieś z {org}",
+
+    applyMembership: "Zastosuj",
+
+    addedToOrg: "Dodano do {org}",
+
+    movedToOrg: "Przeniesiono do {org}",
     actions: {
       sourceCreated: "Źródła",
       noteCreated: "Notatki",

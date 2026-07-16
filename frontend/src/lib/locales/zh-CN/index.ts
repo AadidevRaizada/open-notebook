@@ -110,6 +110,30 @@ export const zhCN = {
     removeMember: "移除",
     removeMemberConfirmTitle: "移除成员？",
     removeMemberConfirmDesc: "将 {email} 从 {org} 中移除？该成员将失去对此组织内容的访问权限。",
+
+    manageOrgs: "组织",
+
+    manageOrgsTitle: "管理组织",
+
+    manageOrgsDesc: "{email} 可以同时属于多个组织。成员身份仅决定可访问哪些组织的资源 — 可在顶部栏切换当前组织。",
+
+    currentOrgs: "当前组织",
+
+    currentOrgsEmpty: "尚未加入任何组织。",
+
+    destinationOrg: "添加或移动到",
+
+    noAvailableOrgs: "该用户已加入所有组织。",
+
+    membershipActionAdd: "添加 — 保留当前组织",
+
+    membershipActionMoveFrom: "从 {org} 移动",
+
+    applyMembership: "应用",
+
+    addedToOrg: "已添加到 {org}",
+
+    movedToOrg: "已移动到 {org}",
     actions: {
       sourceCreated: "来源",
       noteCreated: "笔记",
