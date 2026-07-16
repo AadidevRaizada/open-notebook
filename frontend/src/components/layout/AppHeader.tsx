@@ -1,8 +1,9 @@
 'use client'
 
 import { OrganizationSwitcher, UserButton } from '@clerk/nextjs'
-import { Building2, LogOut, Menu, Search, Users } from 'lucide-react'
+import { Building2, LogOut, Menu, Plug, Search, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConnectedServicesPanel } from '@/components/gmail/ConnectedServicesPanel'
 import { isClerkEnabled } from '@/lib/auth/clerk'
 import { useAuth } from '@/lib/hooks/use-auth'
 import { useIsAdmin } from '@/lib/hooks/use-is-admin'
@@ -74,20 +75,38 @@ export function AppHeader({ onOpenMobileNav }: AppHeaderProps) {
 
         {isClerkEnabled ? (
           <UserButton appearance={{ elements: { avatarBox: 'h-9 w-9' } }}>
-            {isAdmin && (
-              <UserButton.MenuItems>
+            <UserButton.MenuItems>
+              {isAdmin && (
                 <UserButton.Link
                   label={t('navigation.usersAccess')}
                   labelIcon={<Users className="h-4 w-4" />}
                   href="/admin?tab=users"
                 />
+              )}
+              {isAdmin && (
                 <UserButton.Link
                   label={t('navigation.departments')}
                   labelIcon={<Building2 className="h-4 w-4" />}
                   href="/admin?tab=departments"
                 />
-              </UserButton.MenuItems>
-            )}
+              )}
+              {/* Direct menu entry — opens the profile modal at the
+                  Connected Services page declared below. */}
+              <UserButton.Action
+                label={t('gmail.connectedServices')}
+                labelIcon={<Plug className="h-4 w-4" />}
+                open="connected-services"
+              />
+            </UserButton.MenuItems>
+            {/* Connected Services: users manage their own connectors (Gmail)
+                here — connectors are never exposed as source types. */}
+            <UserButton.UserProfilePage
+              label={t('gmail.connectedServices')}
+              url="connected-services"
+              labelIcon={<Plug className="h-4 w-4" />}
+            >
+              <ConnectedServicesPanel />
+            </UserButton.UserProfilePage>
           </UserButton>
         ) : (
           /* Password mode has no Clerk account menu, so sign-out lives here. */

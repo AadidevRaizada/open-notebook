@@ -1,14 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertCircle,
   ArrowUp,
   Copy,
   Check,
+  ChevronDown,
+  ExternalLink,
   FileText,
   Lightbulb,
+  Mail,
   Paperclip,
   RefreshCw,
   Save,
@@ -22,6 +25,13 @@ import { useTranslation } from '@/lib/hooks/use-translation'
 import { AppShell } from '@/components/layout/AppShell'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Tooltip,
   TooltipContent,
@@ -39,8 +49,10 @@ import { useModelDefaults, useModels } from '@/lib/hooks/use-models'
 import { useModalManager } from '@/lib/hooks/use-modal-manager'
 import { useCreateDialogs } from '@/lib/hooks/use-create-dialogs'
 import { useHasAnySources } from '@/lib/hooks/use-sources'
+import { useConnectGmail, useGmailStatus } from '@/lib/hooks/use-gmail'
 import { useIsAdmin } from '@/lib/hooks/use-is-admin'
 import { useCurrentUser, useUserAvatar } from '@/lib/hooks/use-current-user'
+import type { EmailResultItem, RetrievalMode } from '@/lib/types/search'
 import {
   recordRecentQuestion,
   recordRecentAnswer,
@@ -73,16 +85,30 @@ export default function SearchPage() {
   )
 }
 
+const RETRIEVAL_MODE_STORAGE_KEY = 'gmail-retrieval-mode'
+
+function loadRetrievalMode(): RetrievalMode {
+  if (typeof window === 'undefined') return 'auto'
+  const stored = localStorage.getItem(RETRIEVAL_MODE_STORAGE_KEY)
+  return stored === 'documents' || stored === 'documents_gmail' ? stored : 'auto'
+}
+
 function SearchConversation() {
   const { t } = useTranslation()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const urlQuery = searchParams?.get('q') || ''
   const urlAnswerId = searchParams?.get('a') || ''
   // Old deep links with ?mode=search still work (list only, no answer).
   const urlSearchOnly = searchParams?.get('mode') === 'search'
+  const urlGmailResult = searchParams?.get('gmail')
 
   const [question, setQuestion] = useState('')
   const [includeNotes, setIncludeNotes] = useState(true)
+  const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>(loadRetrievalMode)
+  // Email threads for the sources panel — captured from the stream before the
+  // ask state resets, cleared on the next query.
+  const [panelEmails, setPanelEmails] = useState<EmailResultItem[]>([])
   const [turns, setTurns] = useState<Turn[]>([])
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
@@ -114,6 +140,31 @@ function SearchConversation() {
   const { isAdmin } = useIsAdmin()
   const { name } = useCurrentUser()
   const userAvatar = useUserAvatar()
+  const { data: gmailStatus } = useGmailStatus()
+  const connectGmail = useConnectGmail()
+  const gmailConnected = !!gmailStatus?.connected
+
+  const changeRetrievalMode = useCallback((mode: RetrievalMode) => {
+    setRetrievalMode(mode)
+    try {
+      localStorage.setItem(RETRIEVAL_MODE_STORAGE_KEY, mode)
+    } catch {
+      /* storage unavailable — mode still applies for this session */
+    }
+  }, [])
+
+  // Returning from the Google consent screen: toast + strip the param.
+  const gmailToastShownRef = useRef(false)
+  useEffect(() => {
+    if (!urlGmailResult || gmailToastShownRef.current) return
+    gmailToastShownRef.current = true
+    if (urlGmailResult === 'connected') {
+      toast.success(t('gmail.connectedToast'))
+    } else {
+      toast.error(t('gmail.connectErrorToast'))
+    }
+    router.replace('/search', { scroll: false })
+  }, [urlGmailResult, router, t])
 
   const initials = useMemo(() => {
     if (!name || name.includes('@')) return 'U'
@@ -155,6 +206,7 @@ function SearchConversation() {
       setActiveQuestion(q)
       setQuestion('')
       setLastQuery(q)
+      setPanelEmails([])
       recordRecentQuestion(q)
 
       searchMutation.mutate({
@@ -172,15 +224,22 @@ function SearchConversation() {
           answer: modelDefaults.default_chat_model,
           finalAnswer: modelDefaults.default_chat_model,
         }
-        ask.sendAsk(q, models)
+        ask.sendAsk(q, models, gmailConnected ? retrievalMode : 'documents')
       } else {
         setTurns((prev) => [...prev, { id: Date.now(), question: q, answer: '', noAi: true }])
         setActiveQuestion(null)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [modelsLoading, isStreaming, hasEmbeddingModel, includeNotes, canAsk, modelDefaults, customModels]
+    [modelsLoading, isStreaming, hasEmbeddingModel, includeNotes, canAsk, modelDefaults, customModels, gmailConnected, retrievalMode]
   )
+
+  // Capture email threads for the sources panel before the ask state resets.
+  useEffect(() => {
+    if (ask.emailResults.length > 0) {
+      setPanelEmails(ask.emailResults)
+    }
+  }, [ask.emailResults])
 
   // Keep the Sources panel in sync with the latest live search.
   useEffect(() => {
@@ -256,8 +315,10 @@ function SearchConversation() {
   const isEmpty = turns.length === 0 && !activeQuestion
   const sourcesBusy = searchMutation.isPending
 
-  // Live answer text while streaming (partial answers before the final one).
-  const liveAnswer = finalAnswer ?? (answers.length ? answers.join('\n\n') : '')
+  // While a question is in flight we show a phase-based status ("Thinking…",
+  // "Formulating a strategy…", …) instead of the intermediate strategy/answer
+  // text — those internals stay hidden; only the final answer is shown.
+  const gmailActiveForQuery = gmailConnected && retrievalMode !== 'documents'
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -308,13 +369,14 @@ function SearchConversation() {
                     <AssistantMessage>
                       {askError ? (
                         <p className="text-sm text-destructive">{askError}</p>
-                      ) : liveAnswer ? (
-                        <AnswerBody content={liveAnswer} onReferenceClick={handleReferenceClick} />
+                      ) : finalAnswer ? (
+                        <AnswerBody content={finalAnswer} onReferenceClick={handleReferenceClick} />
                       ) : (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <LoadingSpinner size="sm" />
-                          <span>{t('searchPage.processingQuestion')}</span>
-                        </div>
+                        <ThinkingIndicator
+                          hasStrategy={!!ask.strategy}
+                          hasAnswers={ask.answers.length > 0 || ask.emailResults.length > 0}
+                          gmailActive={gmailActiveForQuery}
+                        />
                       )}
                     </AssistantMessage>
                   </div>
@@ -371,18 +433,90 @@ function SearchConversation() {
                 </Button>
               </div>
 
-              {/* Quiet control row: include-notes + admin model selection */}
+              {/* Quiet control row: include-notes + Gmail retrieval + admin models */}
               <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5">
-                <label className="flex min-h-8 cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
-                  <Checkbox
-                    checked={includeNotes}
-                    onCheckedChange={(checked) => setIncludeNotes(checked as boolean)}
-                    disabled={isStreaming}
-                  />
-                  <span className="whitespace-nowrap">{t('searchPage.includeNotes')}</span>
-                </label>
+                <div className="flex min-w-0 items-center gap-3">
+                  <label className="flex min-h-8 shrink-0 cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={includeNotes}
+                      onCheckedChange={(checked) => setIncludeNotes(checked as boolean)}
+                      disabled={isStreaming}
+                    />
+                    <span className="whitespace-nowrap">{t('searchPage.includeNotes')}</span>
+                  </label>
 
-                <div className="flex items-center gap-3">
+                  {/* Retrieval scope: Auto (planner decides) / Documents / Documents+Gmail.
+                      Members manage the connection itself under Connected Services. */}
+                  {gmailStatus?.configured &&
+                    (gmailConnected ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={isStreaming}
+                            className="h-8 min-w-0 px-2 text-xs text-muted-foreground"
+                          >
+                            <Mail className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">
+                              {retrievalMode === 'auto'
+                                ? t('gmail.modeAuto')
+                                : retrievalMode === 'documents'
+                                  ? t('gmail.modeDocuments')
+                                  : t('gmail.modeDocumentsGmail')}
+                            </span>
+                            <ChevronDown className="ml-1 h-3 w-3 shrink-0" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="w-64">
+                          <DropdownMenuRadioGroup
+                            value={retrievalMode}
+                            onValueChange={(v) => changeRetrievalMode(v as RetrievalMode)}
+                          >
+                            <DropdownMenuRadioItem value="auto">
+                              <div className="flex flex-col">
+                                <span>{t('gmail.modeAuto')}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {t('gmail.modeAutoDesc')}
+                                </span>
+                              </div>
+                            </DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="documents">
+                              <div className="flex flex-col">
+                                <span>{t('gmail.modeDocuments')}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {t('gmail.modeDocumentsDesc')}
+                                </span>
+                              </div>
+                            </DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="documents_gmail">
+                              <div className="flex flex-col">
+                                <span>{t('gmail.modeDocumentsGmail')}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {t('gmail.modeDocumentsGmailDesc')}
+                                </span>
+                              </div>
+                            </DropdownMenuRadioItem>
+                          </DropdownMenuRadioGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={connectGmail.isPending}
+                        onClick={() => connectGmail.mutate()}
+                        className="h-8 min-w-0 px-2 text-xs text-muted-foreground"
+                      >
+                        <Mail className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{t('gmail.connect')}</span>
+                      </Button>
+                    ))}
+                </div>
+
+                <div className="flex min-w-0 items-center gap-3">
                   <span className="hidden text-xs text-muted-foreground sm:inline">
                     {t('searchPage.pressToSubmit')}
                   </span>
@@ -424,9 +558,9 @@ function SearchConversation() {
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">{t('searchPage.sources')}</h2>
-          {panelSources && panelSources.length > 0 && (
+          {(panelSources?.length ?? 0) + panelEmails.length > 0 && (
             <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-              {panelSources.length}
+              {(panelSources?.length ?? 0) + panelEmails.length}
             </span>
           )}
         </div>
@@ -435,11 +569,31 @@ function SearchConversation() {
             <div className="flex items-center justify-center py-10">
               <LoadingSpinner size="sm" />
             </div>
-          ) : panelSources && panelSources.length > 0 ? (
-            <div className="space-y-2">
-              {panelSources.map((result, i) => (
-                <SourceCard key={`${result.parent_id}-${i}`} result={result} onOpen={handleReferenceClick} />
-              ))}
+          ) : (panelSources && panelSources.length > 0) || panelEmails.length > 0 ? (
+            <div className="space-y-4">
+              {/* Unified provenance: email threads + documents, each typed by icon. */}
+              {panelEmails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="px-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {t('gmail.matchingEmails')}
+                  </p>
+                  {panelEmails.map((email) => (
+                    <EmailCard key={email.thread_id} email={email} />
+                  ))}
+                </div>
+              )}
+              {panelSources && panelSources.length > 0 && (
+                <div className="space-y-2">
+                  {panelEmails.length > 0 && (
+                    <p className="px-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                      {t('searchPage.matchingKnowledge')}
+                    </p>
+                  )}
+                  {panelSources.map((result, i) => (
+                    <SourceCard key={`${result.parent_id}-${i}`} result={result} onOpen={handleReferenceClick} />
+                  ))}
+                </div>
+              )}
             </div>
           ) : panelSources ? (
             <p className="px-2 py-10 text-center text-sm text-muted-foreground">
@@ -539,6 +693,66 @@ function useTypewriterPlaceholder(phrases: string[], enabled: boolean): string {
   }, [enabled, phrases])
 
   return text
+}
+
+/**
+ * Phase-based status shown while an answer is in flight. We never surface the
+ * model's intermediate strategy or per-search answers — the user just sees
+ * that Navigator is thinking, then the final answer. Messages rotate within a
+ * phase for a bit of life, and stop entirely under reduced-motion.
+ */
+function ThinkingIndicator({
+  hasStrategy,
+  hasAnswers,
+  gmailActive,
+}: {
+  hasStrategy: boolean
+  hasAnswers: boolean
+  gmailActive: boolean
+}) {
+  const { t } = useTranslation()
+
+  const messages = useMemo(() => {
+    if (hasAnswers) return [t('searchPage.thinking.composing')]
+    if (hasStrategy) {
+      return gmailActive
+        ? [t('searchPage.thinking.searching'), t('searchPage.thinking.readingEmails')]
+        : [t('searchPage.thinking.searching')]
+    }
+    return [t('searchPage.thinking.thinking'), t('searchPage.thinking.strategizing')]
+  }, [hasStrategy, hasAnswers, gmailActive, t])
+
+  const [index, setIndex] = useState(0)
+
+  // Reset to the first message whenever the phase (message set) changes.
+  useEffect(() => {
+    setIndex(0)
+  }, [messages])
+
+  useEffect(() => {
+    if (messages.length <= 1) return
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      return
+    }
+    const id = setInterval(() => {
+      setIndex((i) => (i + 1) % messages.length)
+    }, 1800)
+    return () => clearInterval(id)
+  }, [messages])
+
+  return (
+    <div
+      className="flex items-center gap-2 text-sm text-muted-foreground"
+      role="status"
+      aria-live="polite"
+    >
+      <LoadingSpinner size="sm" />
+      <span className="animate-pulse">{messages[index] ?? messages[0]}</span>
+    </div>
+  )
 }
 
 /** Centered welcome shown before the first question. */
@@ -768,6 +982,41 @@ function MessageActions({
         {action(t('searchPage.regenerate'), <RefreshCw className="h-3.5 w-3.5" />, onRegenerate)}
       </div>
     </TooltipProvider>
+  )
+}
+
+/** Email thread card in the provenance panel — links out to Gmail. */
+function EmailCard({ email }: { email: EmailResultItem }) {
+  const { t } = useTranslation()
+  const sender = email.participants[0] ?? ''
+  const date = email.last_date ? new Date(email.last_date).toLocaleDateString() : ''
+
+  return (
+    <a
+      href={email.web_link}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={t('gmail.openInGmail')}
+      className="card-hover flex w-full flex-col gap-1.5 rounded-lg border border-border bg-background p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex items-start gap-2">
+        <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          {email.subject}
+        </span>
+        <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+      </div>
+      <p className="truncate pl-6 text-xs text-muted-foreground">
+        {sender}
+        {date && ` · ${date}`}
+        {email.message_count > 1 && ` · ${email.message_count} ✉`}
+      </p>
+      {email.snippet && (
+        <p className="line-clamp-2 pl-6 text-xs leading-relaxed text-muted-foreground">
+          {email.snippet}
+        </p>
+      )}
+    </a>
   )
 }
 

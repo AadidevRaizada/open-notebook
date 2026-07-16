@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { getApiErrorMessage } from '@/lib/utils/error-handler'
 import { searchApi } from '@/lib/api/search'
-import { AskStreamEvent } from '@/lib/types/search'
+import { AskStreamEvent, EmailResultItem, RetrievalMode } from '@/lib/types/search'
 
 interface AskModels {
   strategy: string
@@ -22,6 +22,7 @@ interface AskState {
   isStreaming: boolean
   strategy: StrategyData | null
   answers: string[]
+  emailResults: EmailResultItem[]
   finalAnswer: string | null
   error: string | null
 }
@@ -32,11 +33,12 @@ export function useAsk() {
     isStreaming: false,
     strategy: null,
     answers: [],
+    emailResults: [],
     finalAnswer: null,
     error: null
   })
 
-  const sendAsk = useCallback(async (question: string, models: AskModels) => {
+  const sendAsk = useCallback(async (question: string, models: AskModels, retrievalMode: RetrievalMode = 'auto') => {
     // Validate inputs
     if (!question.trim()) {
       toast.error(t('apiErrors.pleaseEnterQuestion'))
@@ -53,6 +55,7 @@ export function useAsk() {
       isStreaming: true,
       strategy: null,
       answers: [],
+      emailResults: [],
       finalAnswer: null,
       error: null
     })
@@ -62,7 +65,8 @@ export function useAsk() {
         question,
         strategy_model: models.strategy,
         answer_model: models.answer,
-        final_answer_model: models.finalAnswer
+        final_answer_model: models.finalAnswer,
+        retrieval_mode: retrievalMode
       })
 
       if (!response) {
@@ -106,6 +110,11 @@ export function useAsk() {
                 setState(prev => ({
                   ...prev,
                   answers: [...prev.answers, data.content || '']
+                }))
+              } else if (data.type === 'email_results') {
+                setState(prev => ({
+                  ...prev,
+                  emailResults: data.items || []
                 }))
               } else if (data.type === 'final_answer') {
                 setState(prev => ({
@@ -158,6 +167,7 @@ export function useAsk() {
       isStreaming: false,
       strategy: null,
       answers: [],
+      emailResults: [],
       finalAnswer: null,
       error: null
     })

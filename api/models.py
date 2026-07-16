@@ -58,6 +58,11 @@ class AskRequest(BaseModel):
     strategy_model: str = Field(..., description="Model ID for query strategy")
     answer_model: str = Field(..., description="Model ID for individual answers")
     final_answer_model: str = Field(..., description="Model ID for final answer")
+    retrieval_mode: Literal["documents", "documents_gmail", "auto"] = Field(
+        "auto",
+        description="Which stores to retrieve from: documents only, documents "
+        "plus connected Gmail, or auto (Gmail only on email-intent questions)",
+    )
 
 
 class AskResponse(BaseModel):

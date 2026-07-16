@@ -1,0 +1,35 @@
+-- Migration 21: Gmail connected-service tables.
+-- gmail_connection: one per user; stores the Fernet-encrypted OAuth refresh
+-- token for read-only Gmail access (gmail.readonly scope).
+-- gmail_message_meta: lightweight per-user metadata cache (NO message bodies)
+-- powering instant "recent emails" display without hitting the Gmail API.
+
+DEFINE TABLE gmail_connection SCHEMAFULL;
+DEFINE FIELD user_id ON gmail_connection TYPE string;
+DEFINE FIELD org_id ON gmail_connection TYPE option<string>;
+DEFINE FIELD email ON gmail_connection TYPE string;
+DEFINE FIELD refresh_token ON gmail_connection TYPE string;
+DEFINE FIELD scopes ON gmail_connection TYPE array DEFAULT [];
+DEFINE FIELD scopes.* ON gmail_connection TYPE string;
+DEFINE FIELD last_sync_at ON gmail_connection TYPE option<datetime>;
+DEFINE FIELD created ON gmail_connection TYPE option<datetime> DEFAULT time::now();
+DEFINE FIELD updated ON gmail_connection TYPE option<datetime> DEFAULT time::now();
+
+DEFINE INDEX idx_gmail_connection_user ON gmail_connection FIELDS user_id UNIQUE;
+
+DEFINE TABLE gmail_message_meta SCHEMAFULL;
+DEFINE FIELD user_id ON gmail_message_meta TYPE string;
+DEFINE FIELD org_id ON gmail_message_meta TYPE option<string>;
+DEFINE FIELD message_id ON gmail_message_meta TYPE string;
+DEFINE FIELD thread_id ON gmail_message_meta TYPE string;
+DEFINE FIELD subject ON gmail_message_meta TYPE option<string>;
+DEFINE FIELD sender ON gmail_message_meta TYPE option<string>;
+DEFINE FIELD timestamp ON gmail_message_meta TYPE option<datetime>;
+DEFINE FIELD labels ON gmail_message_meta TYPE array DEFAULT [];
+DEFINE FIELD labels.* ON gmail_message_meta TYPE string;
+DEFINE FIELD snippet ON gmail_message_meta TYPE option<string>;
+DEFINE FIELD created ON gmail_message_meta TYPE option<datetime> DEFAULT time::now();
+DEFINE FIELD updated ON gmail_message_meta TYPE option<datetime> DEFAULT time::now();
+
+DEFINE INDEX idx_gmail_meta_user ON gmail_message_meta FIELDS user_id;
+DEFINE INDEX idx_gmail_meta_user_message ON gmail_message_meta FIELDS user_id, message_id UNIQUE;

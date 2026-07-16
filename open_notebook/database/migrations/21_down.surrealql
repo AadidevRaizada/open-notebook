@@ -1,0 +1,8 @@
+-- Rollback migration 21: remove Gmail connected-service tables.
+
+REMOVE INDEX IF EXISTS idx_gmail_meta_user_message ON TABLE gmail_message_meta;
+REMOVE INDEX IF EXISTS idx_gmail_meta_user ON TABLE gmail_message_meta;
+REMOVE TABLE IF EXISTS gmail_message_meta;
+
+REMOVE INDEX IF EXISTS idx_gmail_connection_user ON TABLE gmail_connection;
+REMOVE TABLE IF EXISTS gmail_connection;

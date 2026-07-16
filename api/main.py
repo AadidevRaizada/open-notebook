@@ -26,6 +26,7 @@ from api.routers import (
     embedding_rebuild,
     episode_profiles,
     export,
+    gmail,
     insights,
     languages,
     models,
@@ -285,6 +286,9 @@ app.add_middleware(
         "/redoc",
         "/api/auth/status",
         "/api/config",
+        # Google's OAuth redirect is a top-level browser navigation with no
+        # Authorization header; the encrypted `state` param authenticates it.
+        "/api/gmail/oauth/callback",
     ],
 )
 
@@ -403,6 +407,7 @@ app.include_router(
     embedding_rebuild.router, prefix="/api/embeddings", tags=["embeddings"]
 )
 app.include_router(export.router, prefix="/api", tags=["export"])
+app.include_router(gmail.router, prefix="/api", tags=["gmail"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(context.router, prefix="/api", tags=["context"])
 app.include_router(sources.router, prefix="/api", tags=["sources"])

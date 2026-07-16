@@ -1,12 +1,15 @@
 import json
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
+from api import gmail_service
 from api.models import AskRequest, AskResponse, SearchRequest, SearchResponse
 from open_notebook.ai.models import Model, model_manager
+from open_notebook.ai.retrieval_planner import RetrievalPlan, plan_retrieval
+from open_notebook.domain.gmail import GmailConnection
 from open_notebook.domain.notebook import text_search, vector_search
 from open_notebook.exceptions import DatabaseOperationError, InvalidInputError
 from open_notebook.graphs.ask import graph as ask_graph
@@ -70,13 +73,21 @@ async def stream_ask_response(
     answer_model: Model,
     final_answer_model: Model,
     org_id: str | None = None,
+    user_id: str | None = None,
+    retrieval_plan: Optional[RetrievalPlan] = None,
 ) -> AsyncGenerator[str, None]:
     """Stream the ask response as Server-Sent Events."""
     try:
         final_answer = None
+        plan_dict = retrieval_plan.as_dict() if retrieval_plan else {}
 
         async for chunk in ask_graph.astream(
-            input=dict(question=question, org_id=org_id),  # type: ignore[arg-type]
+            input=dict(  # type: ignore[arg-type]
+                question=question,
+                org_id=org_id,
+                user_id=user_id,
+                retrieval_plan=plan_dict,
+            ),
             config=dict(
                 configurable=dict(
                     strategy_model=strategy_model.id,
@@ -102,6 +113,27 @@ async def stream_ask_response(
                     answer_data = {"type": "answer", "content": answer}
                     yield f"data: {json.dumps(answer_data)}\n\n"
 
+            elif "search_email" in chunk:
+                email_threads = chunk["search_email"].get("email_results") or []
+                if email_threads:
+                    # Metadata only for the UI sources panel — no bodies.
+                    email_data = {
+                        "type": "email_results",
+                        "items": [
+                            {
+                                "thread_id": t["thread_id"],
+                                "subject": t["subject"],
+                                "participants": t["participants"],
+                                "message_count": t["message_count"],
+                                "last_date": t.get("last_date"),
+                                "snippet": t.get("snippet", ""),
+                                "web_link": t["web_link"],
+                            }
+                            for t in email_threads
+                        ],
+                    }
+                    yield f"data: {json.dumps(email_data)}\n\n"
+
             elif "write_final_answer" in chunk:
                 final_answer = chunk["write_final_answer"]["final_answer"]
                 final_data = {"type": "final_answer", "content": final_answer}
@@ -120,8 +152,26 @@ async def stream_ask_response(
         yield f"data: {json.dumps(error_data)}\n\n"
 
 
+async def _resolve_retrieval_plan(
+    request: Request, ask_request: AskRequest
+) -> tuple[str | None, RetrievalPlan]:
+    """Resolve the asking user and which stores this question should hit."""
+    user = getattr(request.state, "user", None)
+    user_id = user["id"] if user and user.get("id") else "default"
+    gmail_connected = False
+    if ask_request.retrieval_mode != "documents" and gmail_service.is_configured():
+        try:
+            gmail_connected = await GmailConnection.get_for_user(user_id) is not None
+        except Exception as e:
+            logger.warning(f"Gmail connection lookup failed (documents only): {e}")
+    plan = plan_retrieval(
+        ask_request.question, ask_request.retrieval_mode, gmail_connected
+    )
+    return user_id, plan
+
+
 @router.post("/search/ask")
-async def ask_knowledge_base(ask_request: AskRequest):
+async def ask_knowledge_base(ask_request: AskRequest, request: Request):
     """Ask the knowledge base a question using AI models."""
     try:
         # Validate models exist
@@ -152,6 +202,8 @@ async def ask_knowledge_base(ask_request: AskRequest):
                 detail="Ask feature requires an embedding model. Please configure one in the Models section.",
             )
 
+        user_id, retrieval_plan = await _resolve_retrieval_plan(request, ask_request)
+
         # For streaming response
         return StreamingResponse(
             stream_ask_response(
@@ -160,6 +212,8 @@ async def ask_knowledge_base(ask_request: AskRequest):
                 answer_model,
                 final_answer_model,
                 org_id=current_org_id(),
+                user_id=user_id,
+                retrieval_plan=retrieval_plan,
             ),
             media_type="text/event-stream",
             headers={

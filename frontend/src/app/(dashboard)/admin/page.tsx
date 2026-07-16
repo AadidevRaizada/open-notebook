@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Loader2,
   LogIn,
+  Mail,
   MailPlus,
   MoreHorizontal,
   Shield,
@@ -67,6 +68,7 @@ import {
   useSetOrgMemberRole,
   useSetUserRole,
 } from '@/lib/hooks/use-admin'
+import { useGmailAdminConnections } from '@/lib/hooks/use-gmail'
 
 // Full literal key paths so the i18n unused-key analysis can see them.
 const ACTION_LABEL_KEYS: Record<string, string> = {
@@ -100,7 +102,7 @@ export default function AdminPage() {
   )
 }
 
-const ADMIN_TABS = ['users', 'departments', 'usage'] as const
+const ADMIN_TABS = ['users', 'departments', 'usage', 'connections'] as const
 type AdminTab = (typeof ADMIN_TABS)[number]
 
 function AdminPageContent() {
@@ -130,6 +132,7 @@ function AdminPageContent() {
                 <TabsTrigger value="users">{t('adminPage.usersTab')}</TabsTrigger>
                 <TabsTrigger value="departments">{t('adminPage.departmentsTab')}</TabsTrigger>
                 <TabsTrigger value="usage">{t('adminPage.usageTab')}</TabsTrigger>
+                <TabsTrigger value="connections">{t('adminPage.connectionsTab')}</TabsTrigger>
               </TabsList>
               <TabsContent value="users" className="space-y-6 mt-4">
                 <UsersTab />
@@ -139,6 +142,9 @@ function AdminPageContent() {
               </TabsContent>
               <TabsContent value="usage" className="space-y-6 mt-4">
                 <UsageTab />
+              </TabsContent>
+              <TabsContent value="connections" className="space-y-6 mt-4">
+                <ConnectionsTab />
               </TabsContent>
             </Tabs>
 
@@ -747,5 +753,67 @@ function UsageTab() {
         </Card>
       )}
     </>
+  )
+}
+
+function ConnectionsTab() {
+  const { t } = useTranslation()
+  const { data, isLoading } = useGmailAdminConnections()
+  const connections = data?.connections ?? []
+
+  return (
+    <Card className="p-6 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            {t('gmail.adminTitle')}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">{t('gmail.adminDesc')}</p>
+        </div>
+        {connections.length > 0 && (
+          <Badge variant="secondary" className="shrink-0">
+            {t('gmail.adminCount').replace('{count}', connections.length.toString())}
+          </Badge>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {t('common.loading')}
+        </div>
+      ) : connections.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('gmail.adminNone')}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <th className="py-2 pr-4 font-medium">{t('gmail.adminEmail')}</th>
+                <th className="py-2 pr-4 font-medium">{t('gmail.adminUser')}</th>
+                <th className="py-2 font-medium whitespace-nowrap">{t('gmail.adminLastChecked')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {connections.map((conn) => (
+                <tr key={conn.user_id} className="border-b last:border-0">
+                  <td className="py-2 pr-4">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {conn.email}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-muted-foreground">{conn.user_id}</td>
+                  <td className="py-2 whitespace-nowrap text-muted-foreground">
+                    {formatTimestamp(conn.last_sync_at) ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   )
 }

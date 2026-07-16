@@ -48,6 +48,16 @@ class ThreadState(TypedDict):
     answers: Annotated[list, operator.add]
     final_answer: str
     org_id: str  # Active organization for row-level isolation (threaded explicitly)
+    user_id: str  # Asking user; owns any connected services (Gmail)
+    retrieval_plan: dict  # From plan_retrieval(); {"search_gmail": bool, ...}
+    email_results: Annotated[list, operator.add]  # Normalized Gmail threads
+
+
+class EmailSearchState(TypedDict):
+    question: str
+    terms: list
+    user_id: str
+    org_id: str
 
 
 async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -> dict:
@@ -83,7 +93,7 @@ async def call_model_with_messages(state: ThreadState, config: RunnableConfig) -
 
 
 async def trigger_queries(state: ThreadState, config: RunnableConfig):
-    return [
+    sends = [
         Send(
             "provide_answer",
             {
@@ -96,6 +106,55 @@ async def trigger_queries(state: ThreadState, config: RunnableConfig):
         )
         for s in state["strategy"].searches
     ]
+    # Connected-service retrieval branch (selected by the retrieval planner —
+    # see open_notebook/ai/retrieval_planner.py). Runs in parallel with the
+    # document searches; write_final_answer waits for both.
+    if state.get("retrieval_plan", {}).get("search_gmail") and state.get("user_id"):
+        sends.append(
+            Send(
+                "search_email",
+                {
+                    "question": state["question"],
+                    "terms": [s.term for s in state["strategy"].searches],
+                    "user_id": state["user_id"],
+                    "org_id": state.get("org_id"),
+                },
+            )
+        )
+    return sends
+
+
+async def search_email(state: EmailSearchState, config: RunnableConfig) -> dict:
+    """Retrieve whole Gmail threads for the question (read-only, never stored)."""
+    # Lazy import: keeps the api-layer dependency out of graph module load; the
+    # node only runs when the planner enabled Gmail for this request.
+    from api.gmail_service import format_email_findings, search_gmail
+    from open_notebook.ai.retrieval_planner import plan_email_query
+
+    try:
+        # The planner decides the Gmail query and how many threads to pull:
+        # "latest N emails" -> newest-first broad query with N threads; a
+        # keyword ask -> filter by the strategy's search terms. This fixes
+        # keyword-filtered queries returning far fewer emails than requested.
+        email_plan = plan_email_query(state["question"], state.get("terms", []))
+        threads = await search_gmail(
+            state["user_id"],
+            email_plan.query,
+            max_threads=email_plan.max_threads,
+            org_id=state.get("org_id"),
+        )
+        if not threads:
+            return {"email_results": [], "answers": []}
+        return {
+            "email_results": threads,
+            "answers": [format_email_findings(threads)],
+        }
+    except Exception as e:
+        # Gmail must never break Ask — degrade to document-only.
+        from loguru import logger
+
+        logger.warning(f"search_email node degraded to empty result: {e}")
+        return {"email_results": [], "answers": []}
 
 
 async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
@@ -151,10 +210,14 @@ async def write_final_answer(state: ThreadState, config: RunnableConfig) -> dict
 agent_state = StateGraph(ThreadState)
 agent_state.add_node("agent", call_model_with_messages)
 agent_state.add_node("provide_answer", provide_answer)
+agent_state.add_node("search_email", search_email)
 agent_state.add_node("write_final_answer", write_final_answer)
 agent_state.add_edge(START, "agent")
-agent_state.add_conditional_edges("agent", trigger_queries, ["provide_answer"])
+agent_state.add_conditional_edges(
+    "agent", trigger_queries, ["provide_answer", "search_email"]
+)
 agent_state.add_edge("provide_answer", "write_final_answer")
+agent_state.add_edge("search_email", "write_final_answer")
 agent_state.add_edge("write_final_answer", END)
 
 graph = agent_state.compile()
