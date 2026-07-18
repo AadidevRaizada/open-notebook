@@ -59,6 +59,9 @@ import {
   Database,
   AlertCircle,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getDateLocale } from '@/lib/utils/date-locale'
@@ -66,12 +69,18 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/lib/hooks/use-translation'
 import { SourceInsightDialog } from '@/components/source/SourceInsightDialog'
 import { NotebookAssociations } from '@/components/source/NotebookAssociations'
+import { SourceFilePreview } from '@/components/source/SourceFilePreview'
+import { getPreviewKind } from '@/components/source/file-preview-utils'
 
 interface SourceDetailContentProps {
   sourceId: string
   showChatButton?: boolean
+  /** Render an explicit close button in the header row (used by the modal,
+   * which hides the dialog's absolute-positioned close so buttons never overlap). */
+  showCloseButton?: boolean
   onChatClick?: () => void
   onClose?: () => void
+  onPreviewActiveChange?: (active: boolean) => void
 }
 
 const safeExternalHref = (url: string | null | undefined): string | null => {
@@ -88,8 +97,10 @@ const safeExternalHref = (url: string | null | undefined): string | null => {
 export function SourceDetailContent({
   sourceId,
   showChatButton = false,
+  showCloseButton = false,
   onChatClick,
-  onClose
+  onClose,
+  onPreviewActiveChange
 }: SourceDetailContentProps) {
   const { t, language } = useTranslation()
   const queryClient = useQueryClient()
@@ -108,6 +119,18 @@ export function SourceDetailContent({
   const [selectedInsight, setSelectedInsight] = useState<SourceInsightResponse | null>(null)
   const [insightToDelete, setInsightToDelete] = useState<string | null>(null)
   const [deletingInsight, setDeletingInsight] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
+
+  const previewKind = useMemo(
+    () => getPreviewKind(source?.asset?.file_path),
+    [source?.asset?.file_path]
+  )
+  const canPreview = !!previewKind && fileAvailable !== false
+  const previewActive = canPreview && showPreview
+
+  useEffect(() => {
+    onPreviewActiveChange?.(previewActive)
+  }, [previewActive, onPreviewActiveChange])
 
   const fetchSource = useCallback(async () => {
     try {
@@ -421,6 +444,23 @@ export function SourceDetailContent({
               {getSourceType()}
             </Badge>
 
+            {/* Toggle for the original-file preview pane (desktop only) */}
+            {canPreview && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPreview((prev) => !prev)}
+                className="hidden md:inline-flex"
+              >
+                {previewActive ? (
+                  <PanelLeftClose className="h-4 w-4 mr-2" />
+                ) : (
+                  <PanelLeftOpen className="h-4 w-4 mr-2" />
+                )}
+                {previewActive ? t('sources.hidePreview') : t('sources.showPreview')}
+              </Button>
+            )}
+
             {/* Chat with source button - only in modal */}
             {showChatButton && onChatClick && (
               <Button variant="outline" size="sm" onClick={onChatClick}>
@@ -469,12 +509,37 @@ export function SourceDetailContent({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {showCloseButton && onClose && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                aria-label={t('common.close')}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Tabs Content */}
-      <div className="flex-1 overflow-y-auto px-2">
+      {/* Body: optional original-file preview pane + tabs */}
+      <div className="flex flex-1 min-h-0">
+        {previewActive && source.asset?.file_path && previewKind && (
+          <div className="hidden md:flex md:w-1/2 min-w-0 flex-col border-r overflow-hidden">
+            <SourceFilePreview
+              sourceId={source.id}
+              filePath={source.asset.file_path}
+              previewKind={previewKind}
+              title={source.title || undefined}
+              onUnavailable={() => setFileAvailable(false)}
+            />
+          </div>
+        )}
+
+        {/* Tabs Content */}
+        <div className="flex-1 min-w-0 overflow-y-auto px-2">
         <Tabs defaultValue="content" className="w-full">
           <TabsList className="grid w-full grid-cols-3 sticky top-0 z-10">
             <TabsTrigger value="content">{t('sources.content')}</TabsTrigger>
@@ -800,6 +865,7 @@ export function SourceDetailContent({
             />
           </TabsContent>
         </Tabs>
+        </div>
       </div>
 
       <SourceInsightDialog

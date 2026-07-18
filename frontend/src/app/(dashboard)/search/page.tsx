@@ -41,6 +41,7 @@ import {
 import { MarkdownRenderer } from '@/components/ui/markdown-renderer'
 import { LoadingSpinner } from '@/components/common/LoadingSpinner'
 import { AdvancedModelsDialog } from '@/components/search/AdvancedModelsDialog'
+import { CitedDocuments } from '@/components/search/CitedDocuments'
 import { SaveToNotebooksDialog } from '@/components/search/SaveToNotebooksDialog'
 import { convertReferencesToCompactMarkdown, type ReferenceType } from '@/lib/utils/source-references'
 import { useSearch } from '@/lib/hooks/use-search'
@@ -892,7 +893,15 @@ function AnswerBody({
 
   const CitationLink = useMemo(() => makeCitationLink(onReferenceClick), [onReferenceClick])
 
-  return <MarkdownRenderer components={{ a: CitationLink }}>{numbered}</MarkdownRenderer>
+  return (
+    <>
+      <MarkdownRenderer components={{ a: CitationLink }}>{numbered}</MarkdownRenderer>
+      <CitedDocuments
+        content={content}
+        onOpenSource={(id) => onReferenceClick('source', id)}
+      />
+    </>
+  )
 }
 
 /** Renders `#ref-…` links as compact numbered citation badges. */

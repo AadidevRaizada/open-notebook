@@ -1,4 +1,5 @@
 import asyncio
+import mimetypes
 import os
 from pathlib import Path
 from typing import Any, List, Optional
@@ -745,10 +746,22 @@ async def check_source_file(source_id: str):
 
 
 @router.get("/sources/{source_id}/download")
-async def download_source_file(source_id: str):
-    """Download the original file associated with an uploaded source."""
+async def download_source_file(source_id: str, inline: bool = False):
+    """Download the original file associated with an uploaded source.
+
+    With inline=true, serves the file with its real MIME type and an inline
+    content disposition so browsers can render it (PDF/image preview).
+    """
     try:
         resolved_path, filename = await _resolve_source_file(source_id)
+        if inline:
+            guessed_type, _ = mimetypes.guess_type(resolved_path)
+            return FileResponse(
+                path=resolved_path,
+                filename=filename,
+                media_type=guessed_type or "application/octet-stream",
+                content_disposition_type="inline",
+            )
         return FileResponse(
             path=resolved_path,
             filename=filename,

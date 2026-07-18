@@ -102,9 +102,10 @@ export const sourcesApi = {
     return response.data
   },
 
-  downloadFile: async (id: string): Promise<AxiosResponse<Blob>> => {
+  downloadFile: async (id: string, opts?: { inline?: boolean }): Promise<AxiosResponse<Blob>> => {
     return apiClient.get(`/sources/${id}/download`, {
       responseType: 'blob',
+      params: opts?.inline ? { inline: 1 } : undefined,
     })
   },
 }
