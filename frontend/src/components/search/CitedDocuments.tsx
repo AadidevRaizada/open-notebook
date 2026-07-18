@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useQueries } from '@tanstack/react-query'
 import {
   File,
   FileAudio,
@@ -11,6 +12,9 @@ import {
   Presentation,
 } from 'lucide-react'
 
+import { insightsApi } from '@/lib/api/insights'
+import { notesApi } from '@/lib/api/notes'
+import { QUERY_KEYS } from '@/lib/api/query-client'
 import { sourcesApi } from '@/lib/api/sources'
 import { useSource } from '@/lib/hooks/use-sources'
 import { parseSourceReferences } from '@/lib/utils/source-references'
@@ -20,11 +24,25 @@ import {
   mimeForFilePath,
 } from '@/components/source/file-preview-utils'
 
+const withPrefix = (prefix: string, id: string) =>
+  id.includes(':') ? id : `${prefix}:${id}`
+
+/** Direct `source:` refs in a piece of text, normalized to full record ids. */
+function directSourceIds(text: string): string[] {
+  return parseSourceReferences(text)
+    .filter((ref) => ref.type === 'source')
+    .map((ref) => withPrefix('source', ref.id))
+}
+
 /**
  * Attachment cards for the documents cited in an answer — file-backed sources
  * (PDFs, images, spreadsheets, …) render as clickable chips under the message,
  * so the user can open and read the original document in one click instead of
  * hunting for it in the sources list.
+ *
+ * Citations to notes and insights are resolved to the sources behind them:
+ * a cited insight belongs to a source, and a cited note usually embeds
+ * `source:` refs in its content — those documents surface here too.
  */
 export function CitedDocuments({
   content,
@@ -33,19 +51,54 @@ export function CitedDocuments({
   content: string
   onOpenSource: (id: string) => void
 }) {
-  const sourceIds = useMemo(() => {
-    const seen = new Set<string>()
-    const ids: string[] = []
-    for (const ref of parseSourceReferences(content)) {
-      if (ref.type !== 'source') continue
-      const id = ref.id.includes(':') ? ref.id : `source:${ref.id}`
-      if (!seen.has(id)) {
-        seen.add(id)
-        ids.push(id)
-      }
+  const refs = useMemo(() => parseSourceReferences(content), [content])
+
+  const noteIds = useMemo(
+    () =>
+      [...new Set(refs.filter((r) => r.type === 'note').map((r) => withPrefix('note', r.id)))],
+    [refs]
+  )
+  const insightIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          refs.filter((r) => r.type === 'source_insight').map((r) => withPrefix('source_insight', r.id))
+        ),
+      ],
+    [refs]
+  )
+
+  const noteQueries = useQueries({
+    queries: noteIds.map((id) => ({
+      queryKey: QUERY_KEYS.note(id),
+      queryFn: () => notesApi.get(id),
+      staleTime: 60 * 1000,
+    })),
+  })
+  const insightQueries = useQueries({
+    queries: insightIds.map((id) => ({
+      queryKey: ['insights', id],
+      queryFn: () => insightsApi.get(id),
+      staleTime: 60 * 1000,
+    })),
+  })
+
+  // Direct source refs first, then sources found behind cited notes/insights.
+  const seen = new Set<string>()
+  const sourceIds: string[] = []
+  const push = (id: string) => {
+    if (!seen.has(id)) {
+      seen.add(id)
+      sourceIds.push(id)
     }
-    return ids
-  }, [content])
+  }
+  refs.filter((r) => r.type === 'source').forEach((r) => push(withPrefix('source', r.id)))
+  noteQueries.forEach((q) => {
+    if (q.data?.content) directSourceIds(q.data.content).forEach(push)
+  })
+  insightQueries.forEach((q) => {
+    if (q.data?.source_id) push(withPrefix('source', q.data.source_id))
+  })
 
   if (sourceIds.length === 0) {
     return null

@@ -20,11 +20,17 @@ And provided you with the following instructions to formulate the answer:
 
 # YOUR JOB
 
-Based on the user question, the context and the retrieved results, please formulate the appropriate answer. 
+Based on the user question, the context and the retrieved results, please formulate the appropriate answer.
+
+Stay grounded in the retrieved documents: report what they contain and what was extracted from them. Do not recommend external tools, websites, or scripts, and do not add generic how-to content that isn't drawn from these documents — unless the user explicitly asked for that.
 
 # RESULTS
 
 {{results}}
+
+## ABOUT THE RESULT METADATA
+
+Some results include `original_file` and `document_type` fields describing the actual uploaded file behind the source (e.g. `document_type: image (png)` means the source IS an image whose text was extracted via OCR/vision, even though its content reads like plain text). Others include `original_url` for web pages. When the user asks about file types (images, PDFs, spreadsheets, etc.), rely on this metadata — never guess a file's format from its text content. A source with no `original_file` field is a text or web source, not a file upload.
 
 # CITING SOURCES
 

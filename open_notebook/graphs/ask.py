@@ -1,4 +1,5 @@
 import operator
+import os
 from typing import Annotated, List
 
 from ai_prompter import Prompter
@@ -10,11 +11,70 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from open_notebook.ai.provision import provision_langchain_model
+from open_notebook.database.repository import ensure_record_id, repo_query
 from open_notebook.domain.notebook import vector_search
 from open_notebook.exceptions import OpenNotebookError
 from open_notebook.utils import clean_thinking_content
 from open_notebook.utils.error_classifier import classify_error
 from open_notebook.utils.text_utils import extract_text_content
+
+_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "avif", "svg"}
+_AUDIO_EXTENSIONS = {"mp3", "wav", "m4a", "flac", "ogg"}
+_VIDEO_EXTENSIONS = {"mp4", "mov", "webm", "mkv", "avi"}
+
+
+def _describe_file_kind(extension: str) -> str:
+    if extension in _IMAGE_EXTENSIONS:
+        return f"image ({extension})"
+    if extension in _AUDIO_EXTENSIONS:
+        return f"audio ({extension})"
+    if extension in _VIDEO_EXTENSIONS:
+        return f"video ({extension})"
+    return f"{extension} document"
+
+
+async def _attach_file_metadata(results: list) -> None:
+    """Annotate search results with the original file behind each source.
+
+    Vector search only returns titles and matched text, so the answering model
+    has no way to know whether a source is a PNG screenshot, a PDF, or a web
+    page — image sources read as plain text because their content is extracted
+    via OCR/vision. Attaching `original_file` / `document_type` lets the model
+    answer file-type questions ("find any images…") correctly.
+    """
+    source_ids = {
+        str(r.get("parent_id"))
+        for r in results
+        if str(r.get("parent_id", "")).startswith("source:")
+    }
+    if not source_ids:
+        return
+    try:
+        rows = await repo_query(
+            "SELECT id, asset.file_path as file_path, asset.url as url "
+            "FROM source WHERE id INSIDE $ids",
+            {"ids": [ensure_record_id(source_id) for source_id in source_ids]},
+        )
+    except Exception:
+        # Metadata is an enrichment — never break retrieval over it.
+        return
+    meta_by_id = {str(row["id"]): row for row in rows}
+    for result in results:
+        meta = meta_by_id.get(str(result.get("parent_id")))
+        if not meta:
+            continue
+        file_path = meta.get("file_path")
+        if file_path:
+            filename = os.path.basename(str(file_path))
+            extension = (
+                filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            )
+            result["original_file"] = filename
+            if extension:
+                result["document_type"] = _describe_file_kind(extension)
+        elif meta.get("url"):
+            result["document_type"] = "web page"
+            result["original_url"] = meta["url"]
 
 
 class SubGraphState(TypedDict):
@@ -168,6 +228,7 @@ async def provide_answer(state: SubGraphState, config: RunnableConfig) -> dict:
         )
         if len(results) == 0:
             return {"answers": []}
+        await _attach_file_metadata(results)
         payload["results"] = results
         ids = [r["id"] for r in results]
         payload["ids"] = ids
